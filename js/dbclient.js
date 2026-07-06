@@ -1,4 +1,4 @@
-// supabase-client.js
+// dbclient.js
 // Initializes the Supabase client and exposes small auth helpers.
 // Loaded after config.js and the Supabase CDN script, before app-specific JS.
 
@@ -38,7 +38,9 @@ async function signOut() {
  */
 function requireAuth(onAuthenticated) {
   getSession().then((session) => {
+    const loginScreen = document.getElementById("login-screen");
     if (session) {
+      loginScreen.classList.add("hidden");
       onAuthenticated(session);
     } else {
       showLoginScreen(onAuthenticated);
@@ -54,8 +56,6 @@ function requireAuth(onAuthenticated) {
 
 function showLoginScreen(onAuthenticated) {
   const loginScreen = document.getElementById("login-screen");
-  const appRoot = document.getElementById("app-root");
-  appRoot.classList.add("hidden");
   loginScreen.classList.remove("hidden");
 
   const form = document.getElementById("login-form");
@@ -75,7 +75,6 @@ function showLoginScreen(onAuthenticated) {
 
     if (result.success) {
       loginScreen.classList.add("hidden");
-      appRoot.classList.remove("hidden");
       onAuthenticated(result.session);
     } else {
       errorEl.textContent = result.error;

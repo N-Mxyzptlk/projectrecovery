@@ -1,0 +1,449 @@
+/* ============================================
+   Mobile app shell
+   Only active when index.html's device gate shows #mobile-app.
+   Reuses tokens from style.css (--bg, --accent, etc.)
+   ============================================ */
+
+#mobile-app,
+#m-stats-overlay {
+  height: 100vh;
+  height: 100dvh; /* iOS Safari: accounts for the address bar collapsing */
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.m-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+
+.m-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 18px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.m-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.m-date {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.m-icon-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.m-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================
+   "No active workout" state
+   ============================================ */
+.m-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100%;
+  padding: 20px;
+}
+
+.m-empty .big {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.m-empty p {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 28px;
+}
+
+.m-start-btn {
+  width: 100%;
+  max-width: 280px;
+  background: linear-gradient(135deg, var(--accent), #574fd6);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 18px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+  box-shadow: 0 5px 0 #4b45b0, 0 5px 18px var(--accent-glow);
+  transition: box-shadow 0.1s ease, transform 0.1s ease;
+}
+
+.m-start-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #4b45b0;
+}
+
+.m-routine-picker {
+  width: 100%;
+  max-width: 280px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+}
+
+/* ============================================
+   Active session — session header
+   ============================================ */
+.m-session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.m-session-header .name {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
+}
+
+.m-session-header .meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.m-finish-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.m-finish-btn:active {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ============================================
+   Station picker — horizontal chip row + "more"
+   ============================================ */
+.m-station-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 18px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.m-station-chip {
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.m-station-chip.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.m-station-chip.more {
+  color: var(--text-faint);
+}
+
+/* ============================================
+   Rep / weight steppers — big thumb targets
+   ============================================ */
+.m-log-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.m-log-card .selected-station {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.m-stepper-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.m-stepper {
+  flex: 1;
+  text-align: center;
+}
+
+.m-stepper .m-stepper-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+.m-stepper-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.m-stepper-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.m-stepper-btn:active {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(0.94);
+}
+
+.m-stepper-value {
+  width: 56px;
+  text-align: center;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.m-stepper-value:focus {
+  outline: none;
+}
+
+/* ============================================
+   Sticky log button
+   ============================================ */
+.m-log-btn {
+  width: 100%;
+  background: linear-gradient(135deg, var(--accent), #574fd6);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 18px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+  margin-top: 10px;
+  box-shadow: 0 5px 0 #4b45b0, 0 5px 18px var(--accent-glow);
+  transition: box-shadow 0.1s ease, transform 0.1s ease;
+}
+
+.m-log-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #4b45b0;
+}
+
+/* ============================================
+   Session set list
+   ============================================ */
+.m-set-list-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 20px 0 10px;
+}
+
+.m-set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.m-set-row .info .name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.m-set-row .info .detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.m-set-row .delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 16px;
+  padding: 6px 10px;
+}
+
+.m-set-row .delete-btn:active {
+  color: var(--danger);
+}
+
+/* ============================================
+   Stats overlay — read-only glance
+   ============================================ */
+.m-stat-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.m-stat-block .label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.m-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.m-stat-row .k {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.m-stat-row .v {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--gold);
+}
+
+/* ============================================
+   PR celebration banner
+   ============================================ */
+.m-pr-banner {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 70px);
+  left: 50%;
+  transform: translate(-50%, -20px);
+  background: linear-gradient(135deg, var(--gold), #d99e1f);
+  color: #1a1400;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(245, 197, 66, 0.5);
+  z-index: 400;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  white-space: nowrap;
+}
+
+.m-pr-banner.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ============================================
+   Bottom sheet for full station list
+   ============================================ */
+.m-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+}
+
+.m-sheet {
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 20px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+.m-sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.m-sheet-item {
+  padding: 14px 8px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.m-sheet-item:last-child {
+  border-bottom: none;
+}
+
+.m-sheet-item:active {
+  color: var(--accent);
+}

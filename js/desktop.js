@@ -11,6 +11,7 @@ let statsFrequencyChart = null;
 
 function initDesktopApp(session) {
   currentUserId = session.user.id;
+  document.getElementById("app-root").classList.remove("hidden");
 
   setupNav();
   document.getElementById("logout-btn").addEventListener("click", signOut);
@@ -45,6 +46,7 @@ function switchView(viewName) {
   if (viewName === "routines") loadRoutines();
   if (viewName === "workouts") loadWorkouts();
   if (viewName === "stats") loadStats();
+  if (viewName === "admin") loadAdmin();
 }
 
 /* ============================================
@@ -239,6 +241,12 @@ async function loadStations() {
     .join("");
 }
 
+function buildEquipmentSuggestions() {
+  const starters = ["barbell", "dumbbell", "machine", "cable", "bodyweight", "kettlebell", "resistance band", "smith machine", "trap bar"];
+  const used = stationsCache.map((s) => s.equipment).filter(Boolean);
+  return Array.from(new Set([...used, ...starters]));
+}
+
 function openStationModal(stationId) {
   const existing = stationId ? stationsCache.find((s) => s.id === stationId) : null;
 
@@ -260,11 +268,14 @@ function openStationModal(stationId) {
         </div>
         <div class="field">
           <label>Equipment</label>
-          <select id="station-equipment">
-            ${["", "barbell", "dumbbell", "machine", "cable", "bodyweight", "other"]
-              .map((e) => `<option value="${e}" ${existing && existing.equipment === e ? "selected" : ""}>${e || "—"}</option>`)
+          <input type="text" id="station-equipment" list="equipment-suggestions"
+                 placeholder="e.g. barbell, trap bar, resistance band..."
+                 value="${existing && existing.equipment ? escapeHtml(existing.equipment) : ""}" />
+          <datalist id="equipment-suggestions">
+            ${buildEquipmentSuggestions()
+              .map((e) => `<option value="${escapeHtml(e)}"></option>`)
               .join("")}
-          </select>
+          </datalist>
         </div>
       </div>
       <div class="field">
@@ -283,7 +294,7 @@ function openStationModal(stationId) {
     const payload = {
       name: document.getElementById("station-name").value.trim(),
       category: document.getElementById("station-category").value || null,
-      equipment: document.getElementById("station-equipment").value || null,
+      equipment: document.getElementById("station-equipment").value.trim() || null,
       notes: document.getElementById("station-notes").value.trim() || null,
     };
 

@@ -1,11 +1,14 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Workout Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/mobile.css" />
 </head>
 <body>
 
@@ -32,14 +35,36 @@
   </div>
 
   <!-- ============================================
-       MOBILE PLACEHOLDER (mobile UI built separately, later)
+       MOBILE APP SHELL — log-first, minimal, one-thumb use
        ============================================ -->
-  <div id="mobile-placeholder" class="hidden">
-    <div class="box">
-      <div class="big">Mobile view is under construction</div>
-      <p>The desktop dashboard is built first.<br />Open this on a larger screen for now.</p>
-    </div>
+  <div id="mobile-app" class="hidden">
+    <header class="m-topbar">
+      <div>
+        <div class="m-title">WORKOUT</div>
+        <div class="m-date" id="m-today-date"></div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="m-icon-btn" id="m-settings-toggle" aria-label="Settings">⚙</button>
+        <button class="m-icon-btn" id="m-stats-toggle" aria-label="View stats">▲</button>
+      </div>
+    </header>
+
+    <main class="m-main" id="m-main">
+      <!-- filled by mobile.js: either "start workout" prompt or active logging UI -->
+    </main>
   </div>
+
+  <!-- Mobile stats overlay (read-only glance, no editing) -->
+  <div id="m-stats-overlay" class="m-overlay hidden">
+    <header class="m-topbar">
+      <div class="m-title">STATS</div>
+      <button class="m-icon-btn" id="m-stats-close" aria-label="Close">✕</button>
+    </header>
+    <div class="m-main" id="m-stats-content"></div>
+  </div>
+
+  <!-- Mobile settings sheet mount point (account/export/sign out — no management) -->
+  <div id="m-settings-root"></div>
 
   <!-- ============================================
        DESKTOP APP SHELL
@@ -56,6 +81,7 @@
       <div class="nav-item" data-view="routines">▤ Routines</div>
       <div class="nav-item" data-view="workouts">▣ Workouts</div>
       <div class="nav-item" data-view="stats">▲ Statistics</div>
+      <div class="nav-item" data-view="admin">⚙ Admin</div>
 
       <div class="sidebar-footer">
         <button id="logout-btn">Sign out</button>
@@ -139,6 +165,62 @@
           <!-- personal records table, filled by JS -->
         </div>
       </section>
+
+      <!-- ADMIN VIEW -->
+      <section id="view-admin" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h2>Admin</h2>
+            <div class="subtitle">Account, backups, and data control</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4 class="admin-section-title">Account</h4>
+          <div class="card-row">
+            <div>
+              <div class="title">Signed in as</div>
+              <div class="meta" id="admin-user-email">—</div>
+            </div>
+          </div>
+          <div class="card-row" style="border-bottom:none;">
+            <div class="field" style="flex:1;margin:0;">
+              <label>New password</label>
+              <input type="password" id="admin-new-password" placeholder="At least 6 characters" />
+            </div>
+            <button class="btn-accent" id="admin-change-password-btn" style="margin-left:12px;flex-shrink:0;">Update</button>
+          </div>
+          <div class="error-text" id="admin-password-msg"></div>
+        </div>
+
+        <div class="card">
+          <h4 class="admin-section-title">Data & backups</h4>
+          <div class="card-row">
+            <div>
+              <div class="title">Row counts</div>
+              <div class="meta" id="admin-row-counts">Loading...</div>
+            </div>
+          </div>
+          <div class="card-row" style="border-bottom:none;">
+            <div>
+              <div class="title">Export everything</div>
+              <div class="meta">Downloads a full JSON backup of stations, routines, workouts, and sets.</div>
+            </div>
+            <button class="btn-ghost" id="admin-export-btn">⬇ Export JSON</button>
+          </div>
+        </div>
+
+        <div class="card" style="border-color:var(--danger);">
+          <h4 class="admin-section-title" style="color:var(--danger);">Danger zone</h4>
+          <div class="card-row" style="border-bottom:none;">
+            <div>
+              <div class="title">Delete all workout history</div>
+              <div class="meta">Removes every workout and logged set. Stations and routines are kept. Cannot be undone.</div>
+            </div>
+            <button class="icon-btn danger" id="admin-wipe-workouts-btn" style="width:auto;padding:0 14px;">Delete</button>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -153,6 +235,8 @@
   <script src="js/config.js"></script>
   <script src="js/dbclient.js"></script>
   <script src="js/desktop.js"></script>
+  <script src="js/admin.js"></script>
+  <script src="js/mobile.js"></script>
 
   <script>
     // ============================================
@@ -167,12 +251,12 @@
 
     function initApp() {
       if (isDesktop()) {
-        document.getElementById("mobile-placeholder").classList.add("hidden");
+        document.getElementById("mobile-app").classList.add("hidden");
+        document.getElementById("m-stats-overlay").classList.add("hidden");
         requireAuth(initDesktopApp); // defined in desktop.js
       } else {
-        document.getElementById("mobile-placeholder").classList.remove("hidden");
-        document.getElementById("login-screen").classList.add("hidden");
         document.getElementById("app-root").classList.add("hidden");
+        requireAuth(initMobileApp); // defined in mobile.js
       }
     }
 

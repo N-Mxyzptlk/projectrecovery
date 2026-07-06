@@ -10,6 +10,9 @@
   --accent: #6c63ff;
   --accent-dim: rgba(108, 99, 255, 0.15);
   --accent-glow: rgba(108, 99, 255, 0.35);
+  --gold: #f5c542;
+  --gold-dim: rgba(245, 197, 66, 0.15);
+  --energy: #ff5e3a;
   --text: #e4e4e7;
   --text-muted: #8b8b9e;
   --text-faint: #5c5c6e;
@@ -18,6 +21,7 @@
   --warning: #fbbf24;
   --radius: 8px;
   --font-mono: Consolas, "Courier New", monospace;
+  --font-display: "Bebas Neue", Consolas, sans-serif;
 }
 
 * {
@@ -28,9 +32,22 @@ html, body {
   margin: 0;
   padding: 0;
   background: var(--bg);
+  /* Subtle diagonal texture — a nod to gym flooring/plates rather than a flat panel */
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.012) 0px,
+    rgba(255, 255, 255, 0.012) 2px,
+    transparent 2px,
+    transparent 14px
+  );
   color: var(--text);
   font-family: var(--font-mono);
   height: 100%;
+}
+
+h1, h2, h3, .sidebar-brand .name, .m-title {
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
 }
 
 .hidden {
@@ -65,10 +82,14 @@ input, select, textarea {
 }
 
 .login-box h1 {
-  font-size: 18px;
-  letter-spacing: 0.05em;
+  font-size: 28px;
+  letter-spacing: 0.06em;
   margin: 0 0 4px;
   color: var(--text);
+  background: linear-gradient(90deg, var(--text), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .login-box .subtitle {
@@ -92,10 +113,26 @@ input, select, textarea {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
+  transition: border-color 0.15s ease;
+}
+
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b8b9e'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 34px;
+  cursor: pointer;
+}
+
+.field select:hover {
+  border-color: var(--text-muted);
 }
 
 .field input:focus, .field select:focus, .field textarea:focus {
@@ -106,23 +143,26 @@ input, select, textarea {
 
 .btn-primary {
   width: 100%;
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #574fd6);
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 11px;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  transition: box-shadow 0.15s ease, transform 0.1s ease;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 0 #4b45b0, 0 4px 14px var(--accent-glow);
+  transition: box-shadow 0.1s ease, transform 0.1s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 0 0 4px var(--accent-dim);
+  box-shadow: 0 4px 0 #4b45b0, 0 4px 20px var(--accent-glow);
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #4b45b0, 0 2px 10px var(--accent-glow);
 }
 
 .btn-primary:disabled {
@@ -162,9 +202,10 @@ input, select, textarea {
 }
 
 .sidebar-brand .name {
-  font-size: 15px;
+  font-size: 24px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
+  color: var(--accent);
 }
 
 .sidebar-brand .tag {
@@ -231,29 +272,51 @@ input, select, textarea {
 }
 
 .view-header h2 {
-  font-size: 20px;
-  margin: 0;
+  font-size: 32px;
+  margin: 0 0 14px;
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+}
+
+.view-header h2::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  bottom: -10px;
+  width: 44px;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--gold));
+  border-radius: 2px;
 }
 
 .view-header .subtitle {
   color: var(--text-muted);
   font-size: 13px;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .btn-accent {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #574fd6);
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  transition: box-shadow 0.15s ease;
+  padding: 10px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 3px 0 #4b45b0;
+  transition: box-shadow 0.1s ease, transform 0.1s ease;
 }
 
 .btn-accent:hover {
-  box-shadow: 0 0 0 4px var(--accent-dim);
+  box-shadow: 0 3px 0 #4b45b0, 0 3px 16px var(--accent-glow);
+}
+
+.btn-accent:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #4b45b0;
 }
 
 .btn-ghost {
@@ -296,8 +359,19 @@ input, select, textarea {
 }
 
 .stat-card .value {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+  color: var(--gold);
+}
+
+.admin-section-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.05em;
+  margin: 0 0 14px;
+  color: var(--text);
 }
 
 .stat-card .value .unit {
