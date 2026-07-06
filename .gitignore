@@ -1,0 +1,16 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Dependencies (if you add tooling later)
+node_modules/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+*.log
+
+# Supabase CLI local files (if you use it later)
+.supabase/

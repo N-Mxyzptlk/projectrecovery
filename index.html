@@ -1,1 +1,193 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Workout Tracker</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ============================================
+       LOGIN SCREEN (shown until authenticated)
+       ============================================ -->
+  <div id="login-screen" class="hidden">
+    <div class="login-box">
+      <h1>WORKOUT TRACKER</h1>
+      <p class="subtitle">Sign in to continue</p>
+      <form id="login-form">
+        <div class="field">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" required autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn-primary">Sign in</button>
+        <div class="error-text" id="login-error"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================
+       MOBILE PLACEHOLDER (mobile UI built separately, later)
+       ============================================ -->
+  <div id="mobile-placeholder" class="hidden">
+    <div class="box">
+      <div class="big">Mobile view is under construction</div>
+      <p>The desktop dashboard is built first.<br />Open this on a larger screen for now.</p>
+    </div>
+  </div>
+
+  <!-- ============================================
+       DESKTOP APP SHELL
+       ============================================ -->
+  <div id="app-root" class="hidden">
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <div class="name">WORKOUT TRACKER</div>
+        <div class="tag">desktop dashboard</div>
+      </div>
+
+      <div class="nav-item active" data-view="dashboard">◆ Dashboard</div>
+      <div class="nav-item" data-view="stations">■ Stations</div>
+      <div class="nav-item" data-view="routines">▤ Routines</div>
+      <div class="nav-item" data-view="workouts">▣ Workouts</div>
+      <div class="nav-item" data-view="stats">▲ Statistics</div>
+
+      <div class="sidebar-footer">
+        <button id="logout-btn">Sign out</button>
+      </div>
+    </nav>
+
+    <main class="main">
+      <!-- DASHBOARD VIEW -->
+      <section id="view-dashboard" class="view">
+        <div class="view-header">
+          <div>
+            <h2>Dashboard</h2>
+            <div class="subtitle">Overview of your training</div>
+          </div>
+        </div>
+        <div class="stat-grid" id="dashboard-stats">
+          <!-- filled by JS -->
+        </div>
+        <div class="chart-container">
+          <h4>Volume — last 8 weeks</h4>
+          <canvas id="dashboard-volume-chart" height="80"></canvas>
+        </div>
+        <div class="card" id="dashboard-recent">
+          <!-- recent workouts, filled by JS -->
+        </div>
+      </section>
+
+      <!-- STATIONS VIEW -->
+      <section id="view-stations" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h2>Stations</h2>
+            <div class="subtitle">Your exercise library</div>
+          </div>
+          <button class="btn-accent" id="add-station-btn">+ New station</button>
+        </div>
+        <div class="card" id="stations-list"></div>
+      </section>
+
+      <!-- ROUTINES VIEW -->
+      <section id="view-routines" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h2>Routines</h2>
+            <div class="subtitle">Reusable workout templates</div>
+          </div>
+          <button class="btn-accent" id="add-routine-btn">+ New routine</button>
+        </div>
+        <div class="card" id="routines-list"></div>
+      </section>
+
+      <!-- WORKOUTS VIEW -->
+      <section id="view-workouts" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h2>Workouts</h2>
+            <div class="subtitle">Logged sessions</div>
+          </div>
+          <button class="btn-accent" id="add-workout-btn">+ Start workout</button>
+        </div>
+        <div class="card" id="workouts-list"></div>
+      </section>
+
+      <!-- STATS VIEW -->
+      <section id="view-stats" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h2>Statistics</h2>
+            <div class="subtitle">Progress and personal records</div>
+          </div>
+        </div>
+        <div class="chart-container">
+          <h4>Weekly volume trend</h4>
+          <canvas id="stats-volume-chart" height="90"></canvas>
+        </div>
+        <div class="chart-container">
+          <h4>Workout frequency — last 12 weeks</h4>
+          <canvas id="stats-frequency-chart" height="90"></canvas>
+        </div>
+        <div class="card" id="stats-prs">
+          <!-- personal records table, filled by JS -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal mount point -->
+  <div id="modal-root"></div>
+
+  <!-- ============================================
+       Scripts
+       ============================================ -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="js/config.js"></script>
+  <script src="js/dbclient.js"></script>
+  <script src="js/desktop.js"></script>
+
+  <script>
+    // ============================================
+    // Device gate: decide desktop vs mobile before
+    // touching auth or app logic at all.
+    // ============================================
+    const DESKTOP_BREAKPOINT = 1024;
+
+    function isDesktop() {
+      return window.innerWidth >= DESKTOP_BREAKPOINT;
+    }
+
+    function initApp() {
+      if (isDesktop()) {
+        document.getElementById("mobile-placeholder").classList.add("hidden");
+        requireAuth(initDesktopApp); // defined in desktop.js
+      } else {
+        document.getElementById("mobile-placeholder").classList.remove("hidden");
+        document.getElementById("login-screen").classList.add("hidden");
+        document.getElementById("app-root").classList.add("hidden");
+      }
+    }
+
+    initApp();
+
+    // Re-evaluate if the window is resized across the breakpoint
+    // (e.g. resizing a desktop browser window). Reload rather than
+    // hot-swap to avoid partially-initialized app state.
+    let lastKnownIsDesktop = isDesktop();
+    window.addEventListener("resize", () => {
+      const nowIsDesktop = isDesktop();
+      if (nowIsDesktop !== lastKnownIsDesktop) {
+        location.reload();
+      }
+    });
+  </script>
+</body>
+</html>
