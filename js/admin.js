@@ -1,11 +1,15 @@
 // admin.js
 // Desktop-only admin panel: account settings, JSON backup export, and a
 // danger zone for wiping workout history. Reuses supabaseClient and
-// currentUserId from supabase-client.js / desktop.js.
+// currentUserId from dbclient.js / desktop.js.
 
 async function loadAdmin() {
   const { data: userData } = await supabaseClient.auth.getUser();
   document.getElementById("admin-user-email").textContent = userData?.user?.email || "—";
+
+  const { data: profile } = await supabaseClient.from("profiles").select("username, auto_logout_minutes").single();
+  document.getElementById("admin-username").value = profile?.username || "";
+  document.getElementById("admin-auto-logout").value = String(profile?.auto_logout_minutes ?? 0);
 
   wireAdminActions();
   loadAdminRowCounts();
@@ -15,15 +19,56 @@ function wireAdminActions() {
   const pwBtn = document.getElementById("admin-change-password-btn");
   const exportBtn = document.getElementById("admin-export-btn");
   const wipeBtn = document.getElementById("admin-wipe-workouts-btn");
+  const usernameBtn = document.getElementById("admin-save-username-btn");
+  const autoLogoutSelect = document.getElementById("admin-auto-logout");
 
   // Avoid stacking duplicate listeners if the admin view is opened more than once
   pwBtn.replaceWith(pwBtn.cloneNode(true));
   exportBtn.replaceWith(exportBtn.cloneNode(true));
   wipeBtn.replaceWith(wipeBtn.cloneNode(true));
+  usernameBtn.replaceWith(usernameBtn.cloneNode(true));
+  autoLogoutSelect.replaceWith(autoLogoutSelect.cloneNode(true));
 
   document.getElementById("admin-change-password-btn").addEventListener("click", changePassword);
   document.getElementById("admin-export-btn").addEventListener("click", exportAllData);
   document.getElementById("admin-wipe-workouts-btn").addEventListener("click", wipeWorkoutHistory);
+  document.getElementById("admin-save-username-btn").addEventListener("click", saveUsername);
+  document.getElementById("admin-auto-logout").addEventListener("change", saveAutoLogout);
+}
+
+async function saveUsername() {
+  const msg = document.getElementById("admin-username-msg");
+  const username = document.getElementById("admin-username").value.trim().toLowerCase();
+  msg.style.color = "var(--danger)";
+  msg.textContent = "";
+
+  if (!username || !/^[a-z0-9_]{3,20}$/.test(username)) {
+    msg.textContent = "Use 3-20 characters: lowercase letters, numbers, underscores.";
+    return;
+  }
+
+  const { error } = await supabaseClient
+    .from("profiles")
+    .upsert({ id: currentUserId, username }, { onConflict: "id" });
+
+  if (error) {
+    msg.textContent = error.message.includes("duplicate") ? "That username is taken." : error.message;
+    return;
+  }
+
+  msg.style.color = "var(--success)";
+  msg.textContent = "Username saved. Use it to sign in next time.";
+}
+
+async function saveAutoLogout() {
+  const minutes = parseInt(document.getElementById("admin-auto-logout").value, 10);
+  const { error } = await supabaseClient
+    .from("profiles")
+    .upsert({ id: currentUserId, auto_logout_minutes: minutes }, { onConflict: "id" });
+
+  if (!error && typeof updateAutoLogoutMinutes === "function") {
+    updateAutoLogoutMinutes(minutes);
+  }
 }
 
 async function changePassword() {

@@ -63,9 +63,57 @@ input, select, textarea {
   font-family: var(--font-mono);
 }
 
+/* Never show native number-input spin arrows anywhere — custom +/-
+   buttons are used wherever incrementing actually matters. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 /* ============================================
-   Login screen
+   Status light + last-deployed (sidebar footer)
    ============================================ */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-faint);
+}
+
+.status-dot.status-green {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+
+.status-dot.status-yellow {
+  background: var(--warning);
+  box-shadow: 0 0 6px var(--warning);
+}
+
+.status-dot.status-red {
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger);
+}
+
+.deployed-row {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-bottom: 12px;
+}
 #login-screen {
   height: 100vh;
   display: flex;

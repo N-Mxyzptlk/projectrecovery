@@ -17,19 +17,85 @@ async function getSession() {
 }
 
 /**
- * Signs in with email + password. Returns { success, error }.
+ * Signs in with username + password. Looks up the email behind the
+ * username via a SECURITY DEFINER RPC (get_email_for_username), then
+ * signs in normally — Supabase Auth itself still only knows email.
+ * Returns { success, error }.
  */
-async function signIn(email, password) {
+async function signIn(username, password) {
+  const { data: email, error: lookupError } = await supabaseClient.rpc("get_email_for_username", {
+    uname: username.trim().toLowerCase(),
+  });
+
+  if (lookupError || !email) {
+    return { success: false, error: "Invalid username or password." };
+  }
+
   const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: "Invalid username or password." };
   }
   return { success: true, session: data.session };
 }
 
+let autoLogoutTimer = null;
+let autoLogoutMinutes = 0;
+
 async function signOut() {
   await supabaseClient.auth.signOut();
   window.location.reload();
+}
+
+/**
+ * Reads the user's auto-logout preference from `profiles` and starts an
+ * inactivity watcher if it's enabled (> 0 minutes). Shared by desktop and
+ * mobile since both load dbclient.js first.
+ */
+async function initAutoLogout() {
+  try {
+    const { data } = await supabaseClient.from("profiles").select("auto_logout_minutes").single();
+    autoLogoutMinutes = data?.auto_logout_minutes || 0;
+  } catch (e) {
+    autoLogoutMinutes = 0;
+  }
+
+  if (autoLogoutMinutes > 0) {
+    resetAutoLogoutTimer();
+    ["mousemove", "keydown", "touchstart", "click", "scroll"].forEach((evt) =>
+      window.addEventListener(evt, resetAutoLogoutTimer, { passive: true })
+    );
+  }
+}
+
+function resetAutoLogoutTimer() {
+  if (autoLogoutTimer) clearTimeout(autoLogoutTimer);
+  if (autoLogoutMinutes > 0) {
+    autoLogoutTimer = setTimeout(() => {
+      signOut();
+    }, autoLogoutMinutes * 60 * 1000);
+  }
+}
+
+/** Call after changing the setting (e.g. from Admin/Settings) to apply immediately. */
+function updateAutoLogoutMinutes(minutes) {
+  autoLogoutMinutes = minutes;
+  resetAutoLogoutTimer();
+}
+
+/**
+ * Lightweight DB health check. Returns { status: 'green'|'yellow'|'red', ms }.
+ * green = fast success, yellow = slow success, red = failed.
+ */
+async function checkConnectivity() {
+  const start = performance.now();
+  try {
+    const { error } = await supabaseClient.from("stations").select("id", { count: "exact", head: true }).limit(1);
+    const ms = Math.round(performance.now() - start);
+    if (error) return { status: "red", ms };
+    return { status: ms > 1200 ? "yellow" : "green", ms };
+  } catch (e) {
+    return { status: "red", ms: Math.round(performance.now() - start) };
+  }
 }
 
 /**
@@ -64,14 +130,14 @@ function showLoginScreen(onAuthenticated) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     errorEl.textContent = "";
-    const email = document.getElementById("login-email").value.trim();
+    const username = document.getElementById("login-username").value.trim();
     const password = document.getElementById("login-password").value;
 
     const submitBtn = form.querySelector("button[type=submit]");
     submitBtn.disabled = true;
     submitBtn.textContent = "Signing in...";
 
-    const result = await signIn(email, password);
+    const result = await signIn(username, password);
 
     if (result.success) {
       loginScreen.classList.add("hidden");

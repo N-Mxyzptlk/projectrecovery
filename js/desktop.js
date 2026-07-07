@@ -20,7 +20,22 @@ function initDesktopApp(session) {
   document.getElementById("add-routine-btn").addEventListener("click", () => openRoutineModal());
   document.getElementById("add-workout-btn").addEventListener("click", () => openStartWorkoutModal());
 
+  document.getElementById("last-deployed-text").textContent = LAST_DEPLOYED;
+  runConnectivityCheck();
+  setInterval(runConnectivityCheck, 60000);
+
+  initAutoLogout();
+
   loadDashboard();
+}
+
+async function runConnectivityCheck() {
+  const { status, ms } = await checkConnectivity();
+  const dot = document.getElementById("status-dot");
+  const text = document.getElementById("status-text");
+  dot.className = "status-dot status-" + status;
+  const label = status === "green" ? "Connected" : status === "yellow" ? "Slow" : "Offline";
+  text.textContent = `${label} (${ms}ms)`;
 }
 
 /* ============================================
@@ -241,12 +256,6 @@ async function loadStations() {
     .join("");
 }
 
-function buildEquipmentSuggestions() {
-  const starters = ["barbell", "dumbbell", "machine", "cable", "bodyweight", "kettlebell", "resistance band", "smith machine", "trap bar"];
-  const used = stationsCache.map((s) => s.equipment).filter(Boolean);
-  return Array.from(new Set([...used, ...starters]));
-}
-
 function openStationModal(stationId) {
   const existing = stationId ? stationsCache.find((s) => s.id === stationId) : null;
 
@@ -255,32 +264,7 @@ function openStationModal(stationId) {
     <form id="station-form">
       <div class="field">
         <label>Name</label>
-        <input type="text" id="station-name" required value="${existing ? escapeHtml(existing.name) : ""}" />
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Category</label>
-          <select id="station-category">
-            ${["", "push", "pull", "legs", "core", "cardio"]
-              .map((c) => `<option value="${c}" ${existing && existing.category === c ? "selected" : ""}>${c || "—"}</option>`)
-              .join("")}
-          </select>
-        </div>
-        <div class="field">
-          <label>Equipment</label>
-          <input type="text" id="station-equipment" list="equipment-suggestions"
-                 placeholder="e.g. barbell, trap bar, resistance band..."
-                 value="${existing && existing.equipment ? escapeHtml(existing.equipment) : ""}" />
-          <datalist id="equipment-suggestions">
-            ${buildEquipmentSuggestions()
-              .map((e) => `<option value="${escapeHtml(e)}"></option>`)
-              .join("")}
-          </datalist>
-        </div>
-      </div>
-      <div class="field">
-        <label>Notes</label>
-        <textarea id="station-notes" rows="2">${existing ? escapeHtml(existing.notes) : ""}</textarea>
+        <input type="text" id="station-name" required value="${existing ? escapeHtml(existing.name) : ""}" autofocus />
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
@@ -293,9 +277,6 @@ function openStationModal(stationId) {
     e.preventDefault();
     const payload = {
       name: document.getElementById("station-name").value.trim(),
-      category: document.getElementById("station-category").value || null,
-      equipment: document.getElementById("station-equipment").value.trim() || null,
-      notes: document.getElementById("station-notes").value.trim() || null,
     };
 
     let error;
