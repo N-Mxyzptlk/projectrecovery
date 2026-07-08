@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>Workout Tracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -49,10 +49,15 @@
     </main>
   </div>
 
-  <!-- Floating action stack — Journal + Settings, bottom-right, thumb-reachable -->
-  <div id="m-fab-stack" class="m-fab-stack hidden">
-    <button class="m-fab" id="m-journal-fab" aria-label="Journal">📖</button>
+  <!-- Floating action stack — collapsible, thumb-reachable bottom-right.
+       DOM order is reversed on purpose: column-reverse means the first
+       child here (the toggle) anchors at the bottom corner, others fan
+       upward above it when expanded. -->
+  <div id="m-fab-stack" class="m-fab-stack collapsed hidden">
+    <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
     <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
+    <button class="m-fab" id="m-journal-fab" aria-label="Journal">📖</button>
+    <button class="m-fab" id="m-add-station-fab" aria-label="Add station">➕</button>
   </div>
 
 
@@ -271,7 +276,8 @@
         requireAuth(initDesktopApp); // defined in desktop.js
       } else {
         document.getElementById("app-root").classList.add("hidden");
-        document.getElementById("m-fab-stack").classList.remove("hidden");
+        // FAB stack stays hidden until initMobileApp actually runs post-login —
+        // it must never appear on the login screen.
         requireAuth(initMobileApp); // defined in mobile.js
       }
     }

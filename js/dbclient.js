@@ -83,19 +83,59 @@ function updateAutoLogoutMinutes(minutes) {
 }
 
 /**
- * Lightweight DB health check. Returns { status: 'green'|'yellow'|'red', ms }.
- * green = fast success, yellow = slow success, red = failed.
+ * Status light model (shared by desktop sidebar + mobile settings):
+ *   green  = DB reachable, nothing in flight — ready to record
+ *   yellow = a logging write is currently in flight (transient)
+ *   red    = DB health check failed — can't log right now
  */
+let mutationInFlight = 0;
+let lastHealthOk = true;
+
 async function checkConnectivity() {
-  const start = performance.now();
   try {
     const { error } = await supabaseClient.from("stations").select("id", { count: "exact", head: true }).limit(1);
-    const ms = Math.round(performance.now() - start);
-    if (error) return { status: "red", ms };
-    return { status: ms > 1200 ? "yellow" : "green", ms };
+    lastHealthOk = !error;
   } catch (e) {
-    return { status: "red", ms: Math.round(performance.now() - start) };
+    lastHealthOk = false;
   }
+  refreshStatusLights();
+  return lastHealthOk;
+}
+
+/** Wrap any "recording" write with these so the light goes yellow while it runs. */
+function beginMutation() {
+  mutationInFlight++;
+  refreshStatusLights();
+}
+function endMutation() {
+  mutationInFlight = Math.max(0, mutationInFlight - 1);
+  refreshStatusLights();
+}
+
+function refreshStatusLights() {
+  let status, label;
+  if (!lastHealthOk) {
+    status = "red";
+    label = "Database down, unable to log";
+  } else if (mutationInFlight > 0) {
+    status = "yellow";
+    label = "Logging in progress";
+  } else {
+    status = "green";
+    label = "All systems good, ready to record";
+  }
+
+  // Update whichever status elements currently exist in the DOM (desktop
+  // sidebar and/or mobile settings sheet) — either, both, or neither.
+  [
+    ["status-dot", "status-text"],
+    ["m-status-dot", "m-status-text"],
+  ].forEach(([dotId, textId]) => {
+    const dot = document.getElementById(dotId);
+    const text = document.getElementById(textId);
+    if (dot) dot.className = "status-dot status-" + status;
+    if (text) text.textContent = label;
+  });
 }
 
 /**

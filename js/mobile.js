@@ -29,11 +29,35 @@ let mJournalDate = new Date();
 function initMobileApp(session) {
   currentUserId = session.user.id;
   document.getElementById("mobile-app").classList.remove("hidden");
+  document.getElementById("m-fab-stack").classList.remove("hidden");
 
-  document.getElementById("m-journal-fab").addEventListener("click", toggleJournalScreen);
-  document.getElementById("m-settings-fab").addEventListener("click", openSettingsSheet);
+  document.getElementById("m-fab-toggle").addEventListener("click", toggleFabStack);
+  document.getElementById("m-journal-fab").addEventListener("click", () => {
+    collapseFabStack();
+    toggleJournalScreen();
+  });
+  document.getElementById("m-settings-fab").addEventListener("click", () => {
+    collapseFabStack();
+    openSettingsSheet();
+  });
+  document.getElementById("m-add-station-fab").addEventListener("click", () => {
+    collapseFabStack();
+    openAddStationSheet();
+  });
 
   loadStationsForMobile().then(loadActiveWorkout);
+
+  checkConnectivity();
+  setInterval(checkConnectivity, 60000);
+  initAutoLogout();
+}
+
+function toggleFabStack() {
+  document.getElementById("m-fab-stack").classList.toggle("collapsed");
+}
+
+function collapseFabStack() {
+  document.getElementById("m-fab-stack").classList.add("collapsed");
 }
 
 async function loadStationsForMobile() {
@@ -138,6 +162,7 @@ async function startWorkout() {
   const { count } = await supabaseClient.from("workouts").select("id", { count: "exact", head: true });
   const nextSessionNumber = (count || 0) + 1;
 
+  beginMutation();
   const { data, error } = await supabaseClient
     .from("workouts")
     .insert({
@@ -147,6 +172,7 @@ async function startWorkout() {
     })
     .select("*, workout_sets(*, stations(name))")
     .single();
+  endMutation();
 
   if (error) {
     alert("Couldn't start workout: " + error.message);
@@ -457,6 +483,7 @@ async function logSet() {
   const nextSetNumber = setsForStation.length + 1;
   const wasPRAttempt = mIsPRAttemptMode;
 
+  beginMutation();
   const { data, error } = await supabaseClient
     .from("workout_sets")
     .insert({
@@ -470,6 +497,7 @@ async function logSet() {
     })
     .select("*, stations(name)")
     .single();
+  endMutation();
 
   if (error) {
     alert("Failed to log set: " + error.message);
@@ -513,7 +541,9 @@ function renderPRTagPrompt(setId) {
 }
 
 async function markPRResult(setId, result) {
+  beginMutation();
   const { error } = await supabaseClient.from("workout_sets").update({ pr_result: result }).eq("id", setId);
+  endMutation();
   if (!error) {
     const set = mCurrentWorkout.workout_sets.find((s) => s.id === setId);
     if (set) set.pr_result = result;
@@ -545,7 +575,9 @@ function showPRBanner(stationName, weight) {
 }
 
 async function deleteSetMobile(setId) {
+  beginMutation();
   const { error } = await supabaseClient.from("workout_sets").delete().eq("id", setId);
+  endMutation();
   if (error) {
     alert("Failed to delete: " + error.message);
     return;
@@ -579,10 +611,12 @@ function handleFinishClick() {
 }
 
 async function finishWorkout() {
+  beginMutation();
   const { error } = await supabaseClient
     .from("workouts")
     .update({ ended_at: new Date().toISOString() })
     .eq("id", mCurrentWorkout.id);
+  endMutation();
 
   if (error) {
     alert("Failed to finish: " + error.message);
@@ -702,52 +736,248 @@ async function loadJournalDay() {
   }
 
   main.innerHTML = data.map((w) => renderJournalWorkoutCard(w)).join("");
+
+  main.querySelectorAll(".m-journal-swipe-wrap").forEach((wrap) => {
+    const workout = data.find((w) => w.id === wrap.dataset.workoutId);
+    attachJournalSwipe(wrap, workout);
+  });
 }
 
+/** Collapsed summary only — tap opens the detail sheet, swipe reveals actions. */
 function renderJournalWorkoutCard(workout) {
   const volume = workout.workout_sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
-  const grouped = {};
-  workout.workout_sets
-    .sort((a, b) => a.set_number - b.set_number)
-    .forEach((s) => {
-      const name = s.stations.name;
-      if (!grouped[name]) grouped[name] = [];
-      grouped[name].push(s);
-    });
-
-  const stationBlocks = Object.entries(grouped)
-    .map(
-      ([name, sets]) => `
-      <div class="m-journal-station-block">
-        <div class="m-journal-station-name">${escapeHtmlMobile(name)}</div>
-        <div class="m-journal-station-sets">
-          ${sets
-            .map((s) => {
-              let tag = "";
-              if (s.is_pr_attempt) {
-                tag = s.pr_result === "success" ? " 🎯✅" : s.pr_result === "failure" ? " 🎯❌" : " 🎯⏳";
-              }
-              return `${s.reps}${s.weight ? `×${s.weight}kg` : ""}${tag}`;
-            })
-            .join(" · ")}
-        </div>
-      </div>`
-    )
-    .join("");
-
+  const stationCount = new Set(workout.workout_sets.map((s) => s.station_id)).size;
   const duration = workout.ended_at
     ? formatDuration(new Date(workout.ended_at) - new Date(workout.started_at))
     : "in progress";
 
   return `
-    <div class="m-journal-card">
-      <div class="m-journal-card-header">
-        <div class="name">${escapeHtmlMobile(workout.name || "Workout")}</div>
-        <div class="meta">${new Date(workout.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${duration} · ${Math.round(volume)}kg volume</div>
+    <div class="m-journal-swipe-wrap" data-workout-id="${workout.id}">
+      <div class="m-swipe-bg m-swipe-bg-delete">🗑 Delete</div>
+      <div class="m-swipe-bg m-swipe-bg-edit">✎ Edit</div>
+      <div class="m-journal-card" data-workout-id="${workout.id}">
+        <div class="m-journal-card-header">
+          <div class="name">${escapeHtmlMobile(workout.name || "Workout")}</div>
+          <div class="meta">${new Date(workout.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${duration} · ${stationCount} station${stationCount === 1 ? "" : "s"} · ${Math.round(volume)}kg volume</div>
+        </div>
+        <div class="m-journal-tap-hint">Tap for details</div>
       </div>
-      ${stationBlocks}
     </div>
   `;
+}
+
+/** Pointer-based swipe: right = delete, left = edit, tap (no movement) = detail sheet. */
+function attachJournalSwipe(wrap, workout) {
+  const card = wrap.querySelector(".m-journal-card");
+  const bgDelete = wrap.querySelector(".m-swipe-bg-delete");
+  const bgEdit = wrap.querySelector(".m-swipe-bg-edit");
+  const threshold = 90;
+  const tapTolerance = 8;
+
+  let startX = 0;
+  let deltaX = 0;
+  let dragging = false;
+
+  card.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    startX = e.clientX;
+    deltaX = 0;
+    card.style.transition = "none";
+    card.setPointerCapture(e.pointerId);
+  });
+
+  card.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    deltaX = e.clientX - startX;
+    card.style.transform = `translateX(${deltaX}px)`;
+    bgDelete.style.opacity = deltaX > 20 ? Math.min(1, deltaX / threshold) : 0;
+    bgEdit.style.opacity = deltaX < -20 ? Math.min(1, -deltaX / threshold) : 0;
+  });
+
+  const onRelease = () => {
+    if (!dragging) return;
+    dragging = false;
+    card.style.transition = "transform 0.2s ease";
+
+    if (deltaX > threshold) {
+      card.style.transform = "translateX(120%)";
+      setTimeout(() => confirmDeleteJournalWorkout(workout), 150);
+    } else if (deltaX < -threshold) {
+      card.style.transform = "translateX(0)";
+      bgEdit.style.opacity = 0;
+      openJournalEditSheet(workout);
+    } else {
+      card.style.transform = "translateX(0)";
+      bgDelete.style.opacity = 0;
+      bgEdit.style.opacity = 0;
+      if (Math.abs(deltaX) < tapTolerance) {
+        openJournalDetailSheet(workout);
+      }
+    }
+  };
+
+  card.addEventListener("pointerup", onRelease);
+  card.addEventListener("pointercancel", onRelease);
+}
+
+async function confirmDeleteJournalWorkout(workout) {
+  if (!confirm(`Delete "${workout.name || "this workout"}"? This removes all its sets too.`)) {
+    loadJournalDay();
+    return;
+  }
+  beginMutation();
+  const { error } = await supabaseClient.from("workouts").delete().eq("id", workout.id);
+  endMutation();
+  if (error) {
+    alert("Failed to delete: " + error.message);
+  }
+  loadJournalDay();
+}
+
+/* ---- Edit sheet: session name + notes ---- */
+function openJournalEditSheet(workout) {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-stat-block">
+        <div class="label">Session name</div>
+        <input type="text" id="m-edit-name" value="${escapeHtmlMobile(workout.name || "")}"
+               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+      </div>
+      <div class="m-stat-block">
+        <div class="label">Notes</div>
+        <textarea id="m-edit-notes" rows="3"
+                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;font-family:var(--font-mono);">${escapeHtmlMobile(workout.notes || "")}</textarea>
+      </div>
+      <button class="m-start-btn" id="m-edit-save-btn" style="width:100%;max-width:none;">Save</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  document.getElementById("m-edit-save-btn").addEventListener("click", async () => {
+    const name = document.getElementById("m-edit-name").value.trim() || null;
+    const notes = document.getElementById("m-edit-notes").value.trim() || null;
+    const btn = document.getElementById("m-edit-save-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    beginMutation();
+    const { error } = await supabaseClient.from("workouts").update({ name, notes }).eq("id", workout.id);
+    endMutation();
+
+    if (error) {
+      alert("Failed to save: " + error.message);
+      btn.disabled = false;
+      btn.textContent = "Save";
+      return;
+    }
+    overlay.remove();
+    loadJournalDay();
+  });
+}
+
+/* ---- Detail sheet: stations/sets, improvement vs last time, PR markers, notes ---- */
+async function openJournalDetailSheet(workout) {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-stat-block">
+        <div class="label">${escapeHtmlMobile(workout.name || "Workout")}</div>
+        <div class="m-stat-row"><span class="k">${new Date(workout.started_at).toLocaleString()}</span></div>
+      </div>
+      <div id="m-detail-stations"><div class="m-empty" style="height:auto;padding:20px;"><p>Loading comparisons...</p></div></div>
+      ${workout.notes ? `<div class="m-stat-block"><div class="label">Notes</div><div class="m-stat-row"><span class="k">${escapeHtmlMobile(workout.notes)}</span></div></div>` : ""}
+      <button class="m-start-btn" id="m-detail-edit-btn" style="width:100%;max-width:none;">✎ Edit session</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.getElementById("m-detail-edit-btn").addEventListener("click", () => {
+    overlay.remove();
+    openJournalEditSheet(workout);
+  });
+
+  const grouped = {};
+  workout.workout_sets
+    .sort((a, b) => a.set_number - b.set_number)
+    .forEach((s) => {
+      if (!grouped[s.station_id]) grouped[s.station_id] = { name: s.stations.name, sets: [] };
+      grouped[s.station_id].sets.push(s);
+    });
+
+  const blocks = await Promise.all(
+    Object.entries(grouped).map(async ([stationId, group]) => {
+      const thisVolume = group.sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
+      const thisBest = Math.max(...group.sets.map((s) => s.weight || 0));
+
+      const [comparison, allTimePR] = await Promise.all([
+        computeStationComparison(stationId, workout.started_at),
+        supabaseClient.from("workout_sets").select("weight").eq("station_id", stationId).order("weight", { ascending: false }).limit(1),
+      ]);
+
+      const prWeight = allTimePR.data && allTimePR.data.length > 0 ? allTimePR.data[0].weight : null;
+
+      let comparisonLine = "First time logging this station";
+      if (comparison) {
+        const delta = Math.round(thisVolume - comparison.volume);
+        if (delta > 0) comparisonLine = `↑ Improved — volume +${delta}kg vs ${new Date(comparison.date).toLocaleDateString()}`;
+        else if (delta < 0) comparisonLine = `↓ Declined — volume ${delta}kg vs ${new Date(comparison.date).toLocaleDateString()}`;
+        else comparisonLine = `→ Same volume as ${new Date(comparison.date).toLocaleDateString()}`;
+      }
+
+      const setsLine = group.sets
+        .map((s) => {
+          let tag = "";
+          if (s.weight && prWeight && s.weight >= prWeight) tag += " 🏆";
+          if (s.is_pr_attempt) {
+            tag += s.pr_result === "success" ? " 🎯✅" : s.pr_result === "failure" ? " 🎯❌" : " 🎯⏳";
+          }
+          return `${s.reps}${s.weight ? `×${s.weight}kg` : ""}${tag}`;
+        })
+        .join(" · ");
+
+      return `
+        <div class="m-journal-station-block">
+          <div class="m-journal-station-name">${escapeHtmlMobile(group.name)}</div>
+          <div class="m-journal-station-sets">${setsLine}</div>
+          <div class="m-journal-comparison">${comparisonLine}</div>
+        </div>
+      `;
+    })
+  );
+
+  const slot = document.getElementById("m-detail-stations");
+  if (slot) slot.innerHTML = blocks.join("");
+}
+
+/** Finds the most recent PRIOR workout (before this one) that used this
+ *  station, and returns its total volume for comparison. */
+async function computeStationComparison(stationId, beforeStartedAt) {
+  const { data } = await supabaseClient
+    .from("workout_sets")
+    .select("*, workouts!inner(id, started_at)")
+    .eq("station_id", stationId)
+    .order("created_at", { ascending: false })
+    .limit(60);
+
+  if (!data) return null;
+  const priorSets = data.filter((s) => new Date(s.workouts.started_at) < new Date(beforeStartedAt));
+  if (priorSets.length === 0) return null;
+
+  const mostRecentWorkoutId = priorSets[0].workouts.id;
+  const priorSessionSets = priorSets.filter((s) => s.workouts.id === mostRecentWorkoutId);
+  const volume = priorSessionSets.reduce((sum, s) => sum + s.reps * (s.weight || 0), 0);
+
+  return { volume, date: priorSessionSets[0].workouts.started_at };
 }
 
 function formatDuration(ms) {
@@ -802,7 +1032,8 @@ async function openSettingsSheet() {
   `;
 
   document.getElementById("m-auto-logout-select").value = String(profile?.auto_logout_minutes ?? 0);
-  runMobileConnectivityCheck();
+  refreshStatusLights(); // instant reflection of current known state
+  runMobileConnectivityCheck(); // then verify freshness
 
   const overlay = document.getElementById("m-settings-overlay");
   overlay.addEventListener("click", (e) => {
@@ -818,13 +1049,7 @@ async function openSettingsSheet() {
 }
 
 async function runMobileConnectivityCheck() {
-  const { status, ms } = await checkConnectivity();
-  const dot = document.getElementById("m-status-dot");
-  const text = document.getElementById("m-status-text");
-  if (!dot || !text) return;
-  dot.className = "status-dot status-" + status;
-  const label = status === "green" ? "Connected" : status === "yellow" ? "Slow" : "Offline";
-  text.textContent = `${label} (${ms}ms)`;
+  await checkConnectivity(); // updates m-status-dot/m-status-text itself
 }
 
 async function exportDataMobile() {
@@ -863,6 +1088,53 @@ async function exportDataMobile() {
 
   btn.disabled = false;
   btn.textContent = "⬇ Export my data";
+}
+
+/* ============================================
+   Add Station — quick, name-only (mirrors desktop's simplified form)
+   ============================================ */
+function openAddStationSheet() {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.id = "m-add-station-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-stat-block" style="margin-bottom:14px;">
+        <div class="label">New station</div>
+        <input type="text" id="m-new-station-name" placeholder="e.g. Leg Press" autofocus
+               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+                      color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+      </div>
+      <button class="m-start-btn" id="m-save-station-btn" style="width:100%;max-width:none;">Save</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  document.getElementById("m-save-station-btn").addEventListener("click", async () => {
+    const name = document.getElementById("m-new-station-name").value.trim();
+    if (!name) return;
+    const btn = document.getElementById("m-save-station-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    const { error } = await supabaseClient.from("stations").insert({ name });
+    if (error) {
+      alert("Failed to save station: " + error.message);
+      btn.disabled = false;
+      btn.textContent = "Save";
+      return;
+    }
+
+    stationsCache = [];
+    await loadStationsForMobile();
+    overlay.remove();
+    if (mCurrentWorkout && mScreen === "log") renderActiveSession();
+  });
 }
 
 function escapeHtmlMobile(str) {

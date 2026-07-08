@@ -30,12 +30,7 @@ function initDesktopApp(session) {
 }
 
 async function runConnectivityCheck() {
-  const { status, ms } = await checkConnectivity();
-  const dot = document.getElementById("status-dot");
-  const text = document.getElementById("status-text");
-  dot.className = "status-dot status-" + status;
-  const label = status === "green" ? "Connected" : status === "yellow" ? "Slow" : "Offline";
-  text.textContent = `${label} (${ms}ms)`;
+  await checkConnectivity(); // updates status-dot/status-text itself
 }
 
 /* ============================================
