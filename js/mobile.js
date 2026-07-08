@@ -709,9 +709,12 @@ function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+let mOpenSwipeCard = null; // { wrap, card } of the currently revealed card, if any
+
 async function loadJournalDay() {
   const main = document.getElementById("m-main");
   main.innerHTML = `<div class="m-empty"><p>Loading...</p></div>`;
+  mOpenSwipeCard = null;
 
   const startOfDay = new Date(mJournalDate);
   startOfDay.setHours(0, 0, 0, 0);
@@ -741,9 +744,16 @@ async function loadJournalDay() {
     const workout = data.find((w) => w.id === wrap.dataset.workoutId);
     attachJournalSwipe(wrap, workout);
   });
+
+  main.addEventListener("pointerdown", (e) => {
+    if (mOpenSwipeCard && !mOpenSwipeCard.wrap.contains(e.target)) {
+      mOpenSwipeCard.close();
+    }
+  });
 }
 
-/** Collapsed summary only — tap opens the detail sheet, swipe reveals actions. */
+/** Collapsed summary only — tap opens the detail sheet, swipe reveals
+ *  real action buttons that stay open until tapped (or dismissed). */
 function renderJournalWorkoutCard(workout) {
   const volume = workout.workout_sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
   const stationCount = new Set(workout.workout_sets.map((s) => s.station_id)).size;
@@ -753,8 +763,8 @@ function renderJournalWorkoutCard(workout) {
 
   return `
     <div class="m-journal-swipe-wrap" data-workout-id="${workout.id}">
-      <div class="m-swipe-bg m-swipe-bg-delete">🗑 Delete</div>
-      <div class="m-swipe-bg m-swipe-bg-edit">✎ Edit</div>
+      <button type="button" class="m-swipe-action-btn m-swipe-action-delete">🗑<br />Delete</button>
+      <button type="button" class="m-swipe-action-btn m-swipe-action-edit">✎<br />Edit</button>
       <div class="m-journal-card" data-workout-id="${workout.id}">
         <div class="m-journal-card-header">
           <div class="name">${escapeHtmlMobile(workout.name || "Workout")}</div>
@@ -766,19 +776,41 @@ function renderJournalWorkoutCard(workout) {
   `;
 }
 
-/** Pointer-based swipe: right = delete, left = edit, tap (no movement) = detail sheet. */
+/** Swipe reveals a fixed-width action button and HOLDS there — nothing
+ *  fires until the person explicitly taps Delete or Edit. Prevents
+ *  misclick actions from a fast/careless swipe. */
 function attachJournalSwipe(wrap, workout) {
   const card = wrap.querySelector(".m-journal-card");
-  const bgDelete = wrap.querySelector(".m-swipe-bg-delete");
-  const bgEdit = wrap.querySelector(".m-swipe-bg-edit");
-  const threshold = 90;
+  const deleteBtn = wrap.querySelector(".m-swipe-action-delete");
+  const editBtn = wrap.querySelector(".m-swipe-action-edit");
+  const OPEN_THRESHOLD = 36; // drag distance needed to commit to "revealed" on release
+  const ACTION_WIDTH = 88; // must match the CSS width of .m-swipe-action-btn
   const tapTolerance = 8;
 
   let startX = 0;
   let deltaX = 0;
   let dragging = false;
+  let openState = "closed"; // 'closed' | 'delete' | 'edit'
+
+  function setOpenState(next) {
+    openState = next;
+    card.style.transition = "transform 0.2s ease";
+    if (next === "delete") {
+      card.style.transform = `translateX(${ACTION_WIDTH}px)`;
+      mOpenSwipeCard = { wrap, close: () => setOpenState("closed") };
+    } else if (next === "edit") {
+      card.style.transform = `translateX(-${ACTION_WIDTH}px)`;
+      mOpenSwipeCard = { wrap, close: () => setOpenState("closed") };
+    } else {
+      card.style.transform = "translateX(0)";
+      if (mOpenSwipeCard && mOpenSwipeCard.wrap === wrap) mOpenSwipeCard = null;
+    }
+  }
 
   card.addEventListener("pointerdown", (e) => {
+    // Closing whatever else was open keeps only one card revealed at a time.
+    if (mOpenSwipeCard && mOpenSwipeCard.wrap !== wrap) mOpenSwipeCard.close();
+
     dragging = true;
     startX = e.clientX;
     deltaX = 0;
@@ -788,43 +820,48 @@ function attachJournalSwipe(wrap, workout) {
 
   card.addEventListener("pointermove", (e) => {
     if (!dragging) return;
-    deltaX = e.clientX - startX;
-    card.style.transform = `translateX(${deltaX}px)`;
-    bgDelete.style.opacity = deltaX > 20 ? Math.min(1, deltaX / threshold) : 0;
-    bgEdit.style.opacity = deltaX < -20 ? Math.min(1, -deltaX / threshold) : 0;
+    const raw = e.clientX - startX;
+    // Dragging always starts from wherever the card currently sits (0 or ±ACTION_WIDTH).
+    const base = openState === "delete" ? ACTION_WIDTH : openState === "edit" ? -ACTION_WIDTH : 0;
+    deltaX = raw;
+    const next = Math.max(-ACTION_WIDTH, Math.min(ACTION_WIDTH, base + raw));
+    card.style.transform = `translateX(${next}px)`;
   });
 
   const onRelease = () => {
     if (!dragging) return;
     dragging = false;
-    card.style.transition = "transform 0.2s ease";
+    const base = openState === "delete" ? ACTION_WIDTH : openState === "edit" ? -ACTION_WIDTH : 0;
+    const finalPos = Math.max(-ACTION_WIDTH, Math.min(ACTION_WIDTH, base + deltaX));
 
-    if (deltaX > threshold) {
-      card.style.transform = "translateX(120%)";
-      setTimeout(() => confirmDeleteJournalWorkout(workout), 150);
-    } else if (deltaX < -threshold) {
-      card.style.transform = "translateX(0)";
-      bgEdit.style.opacity = 0;
-      openJournalEditSheet(workout);
+    if (Math.abs(deltaX) < tapTolerance && openState === "closed") {
+      setOpenState("closed");
+      openJournalDetailSheet(workout);
+      return;
+    }
+
+    if (finalPos > OPEN_THRESHOLD) {
+      setOpenState("delete");
+    } else if (finalPos < -OPEN_THRESHOLD) {
+      setOpenState("edit");
     } else {
-      card.style.transform = "translateX(0)";
-      bgDelete.style.opacity = 0;
-      bgEdit.style.opacity = 0;
-      if (Math.abs(deltaX) < tapTolerance) {
-        openJournalDetailSheet(workout);
-      }
+      setOpenState("closed");
     }
   };
 
   card.addEventListener("pointerup", onRelease);
   card.addEventListener("pointercancel", onRelease);
+
+  deleteBtn.addEventListener("click", () => confirmDeleteJournalWorkout(workout));
+  editBtn.addEventListener("click", () => {
+    setOpenState("closed");
+    openJournalEditSheet(workout);
+  });
 }
 
 async function confirmDeleteJournalWorkout(workout) {
-  if (!confirm(`Delete "${workout.name || "this workout"}"? This removes all its sets too.`)) {
-    loadJournalDay();
-    return;
-  }
+  // The swipe-then-tap gesture already is the confirmation — no extra
+  // blocking dialog needed on top of that.
   beginMutation();
   const { error } = await supabaseClient.from("workouts").delete().eq("id", workout.id);
   endMutation();
@@ -1031,7 +1068,7 @@ async function openSettingsSheet() {
     </div>
   `;
 
-  document.getElementById("m-auto-logout-select").value = String(profile?.auto_logout_minutes ?? 0);
+  document.getElementById("m-auto-logout-select").value = String(profile?.auto_logout_minutes ?? 30);
   refreshStatusLights(); // instant reflection of current known state
   runMobileConnectivityCheck(); // then verify freshness
 

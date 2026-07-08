@@ -632,33 +632,41 @@
   overflow: hidden;
 }
 
-.m-swipe-bg {
+.m-swipe-action-btn {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  width: 88px;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #fff;
   display: flex;
   align-items: center;
-  font-size: 13px;
-  font-weight: 700;
-  opacity: 0;
-  border-radius: 14px;
+  justify-content: center;
+  text-align: center;
 }
 
-.m-swipe-bg-delete {
+.m-swipe-action-delete {
+  left: 0;
   background: var(--danger);
-  color: #fff;
-  justify-content: flex-start;
-  padding-left: 20px;
+  border-radius: 14px 0 0 14px;
 }
 
-.m-swipe-bg-edit {
+.m-swipe-action-edit {
+  right: 0;
   background: var(--accent);
-  color: #fff;
-  justify-content: flex-end;
-  padding-right: 20px;
+  border-radius: 0 14px 14px 0;
+}
+
+.m-swipe-action-btn:active {
+  filter: brightness(1.15);
 }
 
 .m-journal-card {
   position: relative;
+  z-index: 1;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;

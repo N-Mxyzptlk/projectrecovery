@@ -9,7 +9,7 @@ async function loadAdmin() {
 
   const { data: profile } = await supabaseClient.from("profiles").select("username, auto_logout_minutes").single();
   document.getElementById("admin-username").value = profile?.username || "";
-  document.getElementById("admin-auto-logout").value = String(profile?.auto_logout_minutes ?? 0);
+  document.getElementById("admin-auto-logout").value = String(profile?.auto_logout_minutes ?? 30);
 
   wireAdminActions();
   loadAdminRowCounts();

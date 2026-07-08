@@ -39,7 +39,10 @@ async function signIn(username, password) {
 }
 
 let autoLogoutTimer = null;
-let autoLogoutMinutes = 0;
+let autoLogoutMinutes = 30; // sensible default until we know the user's actual preference
+const INACTIVITY_WARNING_SECONDS = 60; // grace window after the warning appears
+
+let inactivityCountdownInterval = null;
 
 async function signOut() {
   await supabaseClient.auth.signOut();
@@ -49,31 +52,80 @@ async function signOut() {
 /**
  * Reads the user's auto-logout preference from `profiles` and starts an
  * inactivity watcher if it's enabled (> 0 minutes). Shared by desktop and
- * mobile since both load dbclient.js first.
+ * mobile since both load dbclient.js first. Falls back to a 30-minute
+ * default if the profile can't be read at all, rather than silently
+ * disabling the safeguard.
  */
 async function initAutoLogout() {
   try {
-    const { data } = await supabaseClient.from("profiles").select("auto_logout_minutes").single();
-    autoLogoutMinutes = data?.auto_logout_minutes || 0;
+    const { data } = await supabaseClient.from("profiles").select("auto_logout_minutes").maybeSingle();
+    autoLogoutMinutes = data?.auto_logout_minutes ?? 30;
   } catch (e) {
-    autoLogoutMinutes = 0;
+    autoLogoutMinutes = 30;
   }
 
-  if (autoLogoutMinutes > 0) {
-    resetAutoLogoutTimer();
-    ["mousemove", "keydown", "touchstart", "click", "scroll"].forEach((evt) =>
-      window.addEventListener(evt, resetAutoLogoutTimer, { passive: true })
-    );
+  resetAutoLogoutTimer();
+  // Any real interaction resets the timer AND dismisses an active warning —
+  // someone mid-set who taps a stepper is clearly still there.
+  ["mousemove", "keydown", "touchstart", "click", "scroll"].forEach((evt) =>
+    window.addEventListener(evt, handleUserActivity, { passive: true })
+  );
+}
+
+function handleUserActivity() {
+  if (document.getElementById("inactivity-warning-overlay")) {
+    dismissInactivityWarning();
   }
+  resetAutoLogoutTimer();
 }
 
 function resetAutoLogoutTimer() {
   if (autoLogoutTimer) clearTimeout(autoLogoutTimer);
   if (autoLogoutMinutes > 0) {
-    autoLogoutTimer = setTimeout(() => {
-      signOut();
-    }, autoLogoutMinutes * 60 * 1000);
+    autoLogoutTimer = setTimeout(showInactivityWarning, autoLogoutMinutes * 60 * 1000);
   }
+}
+
+/** Shown instead of a silent logout — gives a countdown and a way to stay signed in. */
+function showInactivityWarning() {
+  if (document.getElementById("inactivity-warning-overlay")) return;
+
+  let secondsLeft = INACTIVITY_WARNING_SECONDS;
+
+  const overlay = document.createElement("div");
+  overlay.id = "inactivity-warning-overlay";
+  overlay.innerHTML = `
+    <div class="inactivity-modal">
+      <div class="inactivity-icon">⏱</div>
+      <h3>Are you still there?</h3>
+      <p>You'll be signed out in <span id="inactivity-countdown">${secondsLeft}</span>s due to inactivity.</p>
+      <button id="inactivity-stay-btn" class="btn-primary">I'm still here</button>
+      <button id="inactivity-logout-btn" class="btn-ghost">Log out now</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById("inactivity-stay-btn").addEventListener("click", () => {
+    dismissInactivityWarning();
+    resetAutoLogoutTimer();
+  });
+  document.getElementById("inactivity-logout-btn").addEventListener("click", signOut);
+
+  inactivityCountdownInterval = setInterval(() => {
+    secondsLeft--;
+    const el = document.getElementById("inactivity-countdown");
+    if (el) el.textContent = secondsLeft;
+    if (secondsLeft <= 0) {
+      clearInterval(inactivityCountdownInterval);
+      signOut();
+    }
+  }, 1000);
+}
+
+function dismissInactivityWarning() {
+  const overlay = document.getElementById("inactivity-warning-overlay");
+  if (overlay) overlay.remove();
+  if (inactivityCountdownInterval) clearInterval(inactivityCountdownInterval);
 }
 
 /** Call after changing the setting (e.g. from Admin/Settings) to apply immediately. */
