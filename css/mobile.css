@@ -62,22 +62,18 @@
 }
 
 .m-fab {
-  height: 40px;
-  min-width: 40px;
-  padding: 0 16px;
-  border-radius: 999px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
   background: var(--surface-raised);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
+  font-size: 19px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  opacity: 0.45;
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
@@ -96,13 +92,22 @@
   position: absolute;
 }
 
+/* Buttons rest mostly transparent so they stay out of the way of content,
+   and go fully opaque the moment the stack is opened or a button is
+   pressed — visible exactly when the user is actually engaging with them. */
+.m-fab-stack:not(.collapsed) .m-fab {
+  opacity: 1;
+}
+
 .m-fab.active {
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent);
+  opacity: 1;
 }
 
 .m-fab:active {
+  opacity: 1;
   transform: scale(0.92);
 }
 
@@ -346,21 +351,50 @@
   margin-bottom: 14px;
 }
 
-.m-continuity-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12.5px;
-  padding: 2px 0;
+.m-continuity-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
 }
 
-.m-continuity-row .k {
+.m-continuity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.m-continuity-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.m-continuity-chip.top {
+  background: var(--gold-dim);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.m-continuity-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
-.m-continuity-row .v {
-  color: var(--text);
-  font-weight: 600;
-  text-align: right;
+.m-continuity-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ============================================
@@ -452,6 +486,17 @@
 
 .m-stepper-value:focus {
   outline: none;
+}
+
+/* Quiet color cue vs. last time's value — catches an accidental extra
+   stepper tap before it turns into a wrong log. Text-only, no background,
+   so it stays subtle rather than shouting. */
+.m-stepper-value.increase {
+  color: var(--success);
+}
+
+.m-stepper-value.decrease {
+  color: var(--danger);
 }
 
 /* Weight increment selector chips */
@@ -569,12 +614,17 @@
 }
 
 .m-pr-tag {
+  display: inline-block;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  margin-left: 6px;
-  padding: 2px 7px;
+  margin-left: 10px;
+  padding: 3px 9px;
   border-radius: 999px;
+}
+
+.m-pr-tag + .m-pr-tag {
+  margin-left: 6px;
 }
 
 .m-pr-tag.success {

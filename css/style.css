@@ -354,11 +354,26 @@ input[type="number"] {
   padding: 8px 12px;
   font-size: 12px;
   width: 100%;
+  margin-bottom: 8px;
+}
+
+.sidebar-footer button:last-child {
+  margin-bottom: 0;
 }
 
 .sidebar-footer button:hover {
   color: var(--danger);
   border-color: var(--danger);
+}
+
+.sidebar-footer button.btn-refresh:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sidebar-footer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .main {
@@ -810,6 +825,53 @@ input[type="number"] {
 
 .modal-actions button {
   flex: 1;
+}
+
+/* Workout detail — grouped, scannable list view (not an edit form) */
+.wd-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: -12px 0 16px;
+}
+
+.wd-station-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.wd-station-block {
+  margin-bottom: 18px;
+}
+
+.wd-station-block:last-child {
+  margin-bottom: 0;
+}
+
+.wd-station-name {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wd-set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.wd-set-row:last-child {
+  border-bottom: none;
+}
+
+.wd-set-label {
+  color: var(--text-muted);
 }
 
 /* ============================================

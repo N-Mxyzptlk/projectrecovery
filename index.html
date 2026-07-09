@@ -54,10 +54,10 @@
        child here (the toggle) anchors at the bottom corner, others fan
        upward above it when expanded. -->
   <div id="m-fab-stack" class="m-fab-stack collapsed hidden">
-    <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">More</button>
-    <button class="m-fab" id="m-settings-fab" aria-label="Settings">Settings</button>
-    <button class="m-fab" id="m-journal-fab" aria-label="Journal">Journal</button>
-    <button class="m-fab" id="m-add-station-fab" aria-label="Add station">Add Station</button>
+    <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
+    <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
+    <button class="m-fab" id="m-journal-fab" aria-label="Journal">▤</button>
+    <button class="m-fab" id="m-add-station-fab" aria-label="Add station">+</button>
   </div>
 
 
@@ -73,6 +73,7 @@
 
       <div class="nav-item active" data-view="dashboard">Dashboard</div>
       <div class="nav-item" data-view="stations">Stations</div>
+      <div class="nav-item" data-view="progress">Progress</div>
       <div class="nav-item" data-view="workouts">Workouts</div>
       <div class="nav-item" data-view="admin">Admin</div>
 
@@ -82,6 +83,7 @@
           <span id="status-text">Checking...</span>
         </div>
         <div class="deployed-row">Last deployed: <span id="last-deployed-text"></span></div>
+        <button id="refresh-btn" class="btn-refresh">Refresh</button>
         <button id="logout-btn">Sign out</button>
       </div>
     </nav>
@@ -103,10 +105,23 @@
         <div class="card" id="dashboard-recent">
           <!-- recent workouts, filled by JS -->
         </div>
+      </section>
 
-        <h3 class="section-title">Station Progress</h3>
+      <!-- PROGRESS VIEW (per-station weight trend charts, split out of
+           Dashboard so it's a deliberate destination, not dashboard clutter) -->
+      <section id="view-progress" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h2>Progress</h2>
+            <div class="subtitle">Per-station weight trend over time</div>
+          </div>
+        </div>
+
         <div class="station-stats-grid" id="dashboard-station-stats">
           <!-- filled by JS -->
+        </div>
+        <div id="dashboard-station-stats-toggle" style="margin-top:12px;">
+          <!-- "Show N inactive stations" button, filled by JS -->
         </div>
       </section>
 

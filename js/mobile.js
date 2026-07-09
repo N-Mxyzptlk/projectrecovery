@@ -13,6 +13,8 @@ let mSelectedStationId = null;
 let mRepsValue = 8;
 let mWeightValue = 20;
 let mWeightIncrement = 2.5;
+let mBaselineReps = null; // last time's final set, for the increase/decrease tint
+let mBaselineWeight = null;
 let mStationHistory = null; // { lastSets: [...], lastDate, prWeight }
 let mIsPRAttemptMode = false;
 let mPendingPRSetId = null; // set awaiting a Success/Failure tag
@@ -327,10 +329,12 @@ function wireSessionEvents() {
   document.getElementById("m-reps-value").addEventListener("change", (e) => {
     mRepsValue = Math.max(0, parseInt(e.target.value, 10) || 0);
     e.target.value = mRepsValue;
+    updateStepperTints();
   });
   document.getElementById("m-weight-value").addEventListener("change", (e) => {
     mWeightValue = Math.max(0, parseFloat(e.target.value) || 0);
     e.target.value = mWeightValue;
+    updateStepperTints();
   });
 
   document.getElementById("m-pr-toggle").addEventListener("click", () => {
@@ -508,6 +512,28 @@ function adjustStepper(type, delta) {
     mWeightValue = Math.max(0, +(mWeightValue + delta).toFixed(2));
     document.getElementById("m-weight-value").value = mWeightValue;
   }
+  updateStepperTints();
+}
+
+/** Tints the reps/weight inputs green when above, red when below, what was
+ *  logged last time for this station — a quiet guard against an accidental
+ *  extra tap on the stepper going unnoticed. */
+function updateStepperTints() {
+  const repsInput = document.getElementById("m-reps-value");
+  const weightInput = document.getElementById("m-weight-value");
+
+  if (repsInput) {
+    repsInput.classList.remove("increase", "decrease");
+    if (mBaselineReps != null && mRepsValue !== mBaselineReps) {
+      repsInput.classList.add(mRepsValue > mBaselineReps ? "increase" : "decrease");
+    }
+  }
+  if (weightInput) {
+    weightInput.classList.remove("increase", "decrease");
+    if (mBaselineWeight != null && mWeightValue !== mBaselineWeight) {
+      weightInput.classList.add(mWeightValue > mBaselineWeight ? "increase" : "decrease");
+    }
+  }
 }
 
 /* ============================================
@@ -517,6 +543,9 @@ async function loadStationHistory(stationId) {
   const slot = document.getElementById("m-continuity-slot");
   if (!slot || !stationId) return;
   slot.innerHTML = "";
+  mBaselineReps = null;
+  mBaselineWeight = null;
+  updateStepperTints();
 
   const [lastWorkoutRes, prRes] = await Promise.all([
     supabaseClient
@@ -549,15 +578,19 @@ async function loadStationHistory(stationId) {
   };
 
   // Speed win: prefill reps/weight with the last time's final set so the
-  // person can just tap Log Set to repeat, or nudge from there.
+  // person can just tap Log Set to repeat, or nudge from there. That value
+  // also becomes the baseline the stepper tints against.
   const lastSet = lastSets[lastSets.length - 1];
   if (lastSet) {
     mRepsValue = lastSet.reps;
     mWeightValue = lastSet.weight || mWeightValue;
+    mBaselineReps = lastSet.reps;
+    mBaselineWeight = lastSet.weight || null;
     const repsInput = document.getElementById("m-reps-value");
     const weightInput = document.getElementById("m-weight-value");
     if (repsInput) repsInput.value = mRepsValue;
     if (weightInput) weightInput.value = mWeightValue;
+    updateStepperTints();
   }
 
   renderContinuityCard();
@@ -573,15 +606,34 @@ function renderContinuityCard() {
     return;
   }
 
-  const lastLine = lastSets && lastSets.length > 0
-    ? lastSets.map((s) => `${s.reps}${s.weight ? `×${s.weight}kg` : ""}`).join(", ")
-    : null;
+  // Sets as individual chips instead of one dense comma-joined string —
+  // a wall of "12×20kg, 10×20kg, 8×22.5kg, ..." gets unreadable fast once
+  // there are more than 2-3 sets. The heaviest set is highlighted so the
+  // "how strong was I last time" question has one obvious answer at a
+  // glance instead of making the user scan and compare every number.
+  let lastSetsHtml = "";
+  if (lastSets && lastSets.length > 0) {
+    const maxWeight = Math.max(...lastSets.map((s) => s.weight || 0));
+    const chips = lastSets
+      .map((s) => {
+        const isTop = maxWeight > 0 && s.weight === maxWeight;
+        const label = s.weight ? `${s.reps} × ${s.weight}kg` : `${s.reps} reps`;
+        return `<span class="m-continuity-chip ${isTop ? "top" : ""}">${label}</span>`;
+      })
+      .join("");
+    lastSetsHtml = `
+      <div class="m-continuity-label">Last time</div>
+      <div class="m-continuity-chips">${chips}</div>
+    `;
+  }
 
   slot.innerHTML = `
     <div class="m-continuity-card">
-      ${lastLine ? `<div class="m-continuity-row"><span class="k">Last time</span><span class="v">${escapeHtmlMobile(lastLine)}</span></div>` : ""}
-      ${lastDate ? `<div class="m-continuity-row"><span class="k">Date</span><span class="v">${new Date(lastDate).toLocaleDateString()}</span></div>` : ""}
-      ${prWeight ? `<div class="m-continuity-row"><span class="k m-pr-label">BEST</span><span class="v">${prWeight}kg</span></div>` : ""}
+      ${lastSetsHtml}
+      <div class="m-continuity-meta-row">
+        ${lastDate ? `<span class="m-continuity-meta">${new Date(lastDate).toLocaleDateString()}</span>` : ""}
+        ${prWeight ? `<span class="m-continuity-meta"><span class="m-pr-label">BEST</span> ${prWeight}kg</span>` : ""}
+      </div>
     </div>
   `;
 }

@@ -14,6 +14,7 @@ function initDesktopApp(session) {
 
   setupNav();
   document.getElementById("logout-btn").addEventListener("click", signOut);
+  document.getElementById("refresh-btn").addEventListener("click", refreshCurrentView);
 
   document.getElementById("add-station-btn").addEventListener("click", () => openStationModal());
   document.getElementById("clear-all-workouts-btn").addEventListener("click", clearAllWorkouts);
@@ -51,10 +52,27 @@ function switchView(viewName) {
   document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
   document.getElementById(`view-${viewName}`).classList.remove("hidden");
 
-  if (viewName === "dashboard") loadDashboard();
-  if (viewName === "stations") loadStations();
-  if (viewName === "workouts") loadWorkouts();
-  if (viewName === "admin") loadAdmin();
+  if (viewName === "dashboard") return loadDashboard();
+  if (viewName === "stations") return loadStations();
+  if (viewName === "progress") return loadStationStats();
+  if (viewName === "workouts") return loadWorkouts();
+  if (viewName === "admin") return loadAdmin();
+}
+
+/** Re-fetches whatever view is currently showing, without a page reload —
+ *  a hard refresh (F5) would sign the user out now that sessions aren't
+ *  persisted, so this is the safe way to pull fresh data. */
+async function refreshCurrentView() {
+  const btn = document.getElementById("refresh-btn");
+  btn.disabled = true;
+  btn.textContent = "Refreshing...";
+
+  const activeNav = document.querySelector(".nav-item.active");
+  const viewName = activeNav ? activeNav.dataset.view : "dashboard";
+  await Promise.all([switchView(viewName), runConnectivityCheck()]);
+
+  btn.disabled = false;
+  btn.textContent = "Refresh";
 }
 
 /* ============================================
@@ -86,7 +104,6 @@ function escapeHtml(str) {
 async function loadDashboard() {
   renderQuickActions();
   await loadRecentWorkouts();
-  await loadStationStats();
 }
 
 function renderQuickActions() {
@@ -163,9 +180,13 @@ function formatRelativeDays(days) {
    weight-lifted trend, since "did I get stronger on this exercise" is
    the actually useful question, not an aggregate volume number.
    ============================================ */
+const ABANDONED_DAYS = 60; // no session in 2 months reads as "stopped", not "plateaued"
+
 async function loadStationStats() {
   const box = document.getElementById("dashboard-station-stats");
+  const toggleBox = document.getElementById("dashboard-station-stats-toggle");
   box.innerHTML = `<div class="empty-state">Loading...</div>`;
+  toggleBox.innerHTML = "";
 
   const { data: workouts, error } = await supabaseClient
     .from("workouts")
@@ -203,55 +224,76 @@ async function loadStationStats() {
   Object.values(stationStatCharts).forEach((chart) => chart.destroy());
   stationStatCharts = {};
 
-  const ABANDONED_DAYS = 60; // no session in 2 months reads as "stopped", not "plateaued"
+  const decorated = entries.map(([stationId, data]) => {
+    const daysSince = Math.floor((Date.now() - new Date(data.sessions[data.sessions.length - 1].date)) / 86400000);
+    return { stationId, data, daysSince, isAbandoned: daysSince >= ABANDONED_DAYS };
+  });
 
-  box.innerHTML = entries
-    .map(([stationId, data]) => {
-      const sessions = data.sessions;
-      const timesLogged = sessions.length;
-      const lastDate = new Date(sessions[sessions.length - 1].date);
-      const daysSince = Math.floor((Date.now() - lastDate) / 86400000);
-      const isAbandoned = daysSince >= ABANDONED_DAYS;
+  // Abandoned stations are hidden by default — a station you tried once 8
+  // months ago and never touched again shouldn't take up the same visual
+  // weight as what you're actually training right now. They're one click
+  // away, not gone.
+  const activeEntries = decorated.filter((e) => !e.isAbandoned);
+  const abandonedEntries = decorated.filter((e) => e.isAbandoned);
 
-      let trendClass = "same";
-      let trendLabel = "First session";
-      if (sessions.length >= 2) {
-        const last = sessions[sessions.length - 1].weight;
-        const prev = sessions[sessions.length - 2].weight;
-        if (last > prev) {
-          trendClass = "up";
-          trendLabel = `↑ +${Math.round((last - prev) * 10) / 10}kg`;
-        } else if (last < prev) {
-          trendClass = "down";
-          trendLabel = `↓ ${Math.round((last - prev) * 10) / 10}kg`;
-        } else {
-          trendClass = "same";
-          trendLabel = "→ Same";
-        }
-      }
+  box.innerHTML = activeEntries.length > 0
+    ? activeEntries.map(renderStationStatCard).join("")
+    : `<div class="empty-state"><div class="big">No active stations</div><p>Everything you've logged is inactive — see below.</p></div>`;
+  renderStationCharts(activeEntries);
 
-      // Abandoned overrides the up/down/same trend read — "you got stronger
-      // last time you did this" is misleading framing for a station you
-      // haven't touched in 2 months.
-      if (isAbandoned) {
-        trendClass = "abandoned";
-        trendLabel = timesLogged === 1 ? "Not repeated" : "Inactive";
-      }
+  if (abandonedEntries.length > 0) {
+    toggleBox.innerHTML = `<button class="btn-ghost" id="show-inactive-stations-btn">Show ${abandonedEntries.length} inactive station${abandonedEntries.length === 1 ? "" : "s"}</button>`;
+    document.getElementById("show-inactive-stations-btn").addEventListener("click", () => {
+      box.innerHTML += abandonedEntries.map(renderStationStatCard).join("");
+      renderStationCharts(abandonedEntries);
+      toggleBox.innerHTML = "";
+    });
+  }
+}
 
-      return `
-        <div class="station-stat-card ${isAbandoned ? "abandoned" : ""}">
-          <div class="header-row">
-            <div class="station-name">${escapeHtml(data.name)}</div>
-            <div class="trend-badge ${trendClass}">${trendLabel}</div>
-          </div>
-          <div class="meta-line">Logged ${timesLogged} time${timesLogged === 1 ? "" : "s"} · Last ${formatRelativeDays(daysSince)}</div>
-          <canvas id="station-chart-${stationId}" height="90"></canvas>
-        </div>
-      `;
-    })
-    .join("");
+function renderStationStatCard({ stationId, data, daysSince, isAbandoned }) {
+  const sessions = data.sessions;
+  const timesLogged = sessions.length;
 
-  entries.forEach(([stationId, data]) => {
+  let trendClass = "same";
+  let trendLabel = "First session";
+  if (sessions.length >= 2) {
+    const last = sessions[sessions.length - 1].weight;
+    const prev = sessions[sessions.length - 2].weight;
+    if (last > prev) {
+      trendClass = "up";
+      trendLabel = `↑ +${Math.round((last - prev) * 10) / 10}kg`;
+    } else if (last < prev) {
+      trendClass = "down";
+      trendLabel = `↓ ${Math.round((last - prev) * 10) / 10}kg`;
+    } else {
+      trendClass = "same";
+      trendLabel = "→ Same";
+    }
+  }
+
+  // Abandoned overrides the up/down/same trend read — "you got stronger
+  // last time you did this" is misleading framing for a station you
+  // haven't touched in 2 months.
+  if (isAbandoned) {
+    trendClass = "abandoned";
+    trendLabel = timesLogged === 1 ? "Not repeated" : "Inactive";
+  }
+
+  return `
+    <div class="station-stat-card ${isAbandoned ? "abandoned" : ""}">
+      <div class="header-row">
+        <div class="station-name">${escapeHtml(data.name)}</div>
+        <div class="trend-badge ${trendClass}">${trendLabel}</div>
+      </div>
+      <div class="meta-line">Logged ${timesLogged} time${timesLogged === 1 ? "" : "s"} · Last ${formatRelativeDays(daysSince)}</div>
+      <canvas id="station-chart-${stationId}" height="90"></canvas>
+    </div>
+  `;
+}
+
+function renderStationCharts(decoratedEntries) {
+  decoratedEntries.forEach(({ stationId, data }) => {
     const ctx = document.getElementById(`station-chart-${stationId}`);
     if (!ctx) return;
     const chart = new Chart(ctx.getContext("2d"), {
@@ -489,24 +531,45 @@ async function openWorkoutDetail(workoutId) {
 
   if (error) return alert("Failed to load workout: " + error.message);
 
-  const setsHtml = workout.workout_sets
+  // Grouped by station and labeled the same way mobile's Journal does
+  // ("Set N · reps reps @ weightkg") — this is a list to scan, not an
+  // edit form, so it reads by station the way you'd actually recall a
+  // session ("what did I do on bench, then squat...") rather than as a
+  // flat insertion-order list of sets.
+  const grouped = {};
+  workout.workout_sets
     .sort((a, b) => a.set_number - b.set_number)
-    .map(
-      (s) => `
-      <div class="card-row">
-        <div>
-          <div class="title">${escapeHtml(s.stations.name)} — set ${s.set_number}</div>
-          <div class="meta">${s.reps} reps${s.weight ? ` @ ${s.weight}${s.weight_unit}` : ""}</div>
-        </div>
-        <button class="icon-btn danger" onclick="deleteSet('${s.id}', '${workoutId}')">Delete</button>
-      </div>`
-    )
+    .forEach((s) => {
+      if (!grouped[s.station_id]) grouped[s.station_id] = { name: s.stations.name, sets: [] };
+      grouped[s.station_id].sets.push(s);
+    });
+
+  const stationsHtml = Object.values(grouped)
+    .map((group) => {
+      const setsHtml = group.sets
+        .map(
+          (s) => `
+          <div class="wd-set-row">
+            <span class="wd-set-label">Set ${s.set_number} · ${s.reps} reps${s.weight ? ` @ ${s.weight}kg` : ""}</span>
+            <button class="icon-btn danger" onclick="deleteSet('${s.id}', '${workoutId}')">Delete</button>
+          </div>`
+        )
+        .join("");
+      return `
+        <div class="wd-station-block">
+          <div class="wd-station-name">${escapeHtml(group.name)}</div>
+          ${setsHtml}
+        </div>`;
+    })
     .join("");
 
+  const volume = workout.workout_sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
+
   openModal(`
-    <h3>${escapeHtml(workout.name || "Workout")} — ${new Date(workout.started_at).toLocaleDateString()}</h3>
-    <div style="max-height:320px;overflow-y:auto;margin-bottom:16px;">
-      ${setsHtml || '<div class="empty-state" style="padding:20px;">No sets logged yet</div>'}
+    <h3>${escapeHtml(workout.name || "Workout")}</h3>
+    <div class="wd-meta">${new Date(workout.started_at).toLocaleString()} · ${workout.workout_sets.length} sets · ${Math.round(volume)}kg volume</div>
+    <div class="wd-station-list">
+      ${stationsHtml || '<div class="empty-state" style="padding:20px;">No sets logged yet</div>'}
     </div>
     <div class="modal-actions">
       <button type="button" class="btn-ghost" onclick="closeModal()">Close</button>
