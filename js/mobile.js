@@ -312,7 +312,10 @@ function renderSetList() {
         <div class="name">${escapeHtmlMobile(s.stations.name)} ${prBadge}</div>
         <div class="detail">Set ${s.set_number} · ${s.reps} reps${s.weight ? ` @ ${s.weight}kg` : ""}</div>
       </div>
-      <button class="delete-btn" data-set-id="${s.id}" type="button">✕</button>
+      <div class="m-set-row-actions">
+        <button class="edit-btn" data-set-id="${s.id}" type="button" aria-label="Edit set">✎</button>
+        <button class="delete-btn" data-set-id="${s.id}" type="button" aria-label="Delete set">✕</button>
+      </div>
     </div>`;
     })
     .join("");
@@ -354,8 +357,28 @@ function wireSessionEvents() {
 
   document.getElementById("m-log-set-btn").addEventListener("click", logSet);
 
-  document.querySelectorAll(".delete-btn[data-set-id]").forEach((btn) => {
+  wireSetListButtons();
+}
+
+/** Attaches delete + edit-pencil handlers to whatever is currently in
+ *  #m-set-list. Called after every full or partial re-render of that list. */
+function wireSetListButtons() {
+  document.querySelectorAll("#m-set-list .delete-btn[data-set-id]").forEach((btn) => {
     btn.addEventListener("click", () => deleteSetMobile(btn.dataset.setId));
+  });
+  document.querySelectorAll("#m-set-list .edit-btn[data-set-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const set = mCurrentWorkout.workout_sets.find((s) => s.id === btn.dataset.setId);
+      if (!set) return;
+      openSetEditSheet(set, {
+        onSaved: (updated) => {
+          set.reps = updated.reps;
+          set.weight = updated.weight;
+          document.getElementById("m-set-list").innerHTML = renderSetList();
+          wireSetListButtons();
+        },
+      });
+    });
   });
 }
 
@@ -376,6 +399,122 @@ function getWeightIncrementPref(stationId) {
 
 function saveWeightIncrementPref(stationId, value) {
   localStorage.setItem(`wt-increment-${stationId}`, String(value));
+}
+
+/* ============================================
+   Edit an already-logged set — reps/weight only, via the same
+   stepper + increment-chip pattern used for logging. Works both mid-
+   session and from the Journal (any set, any time).
+   ============================================ */
+function openSetEditSheet(set, options) {
+  let editReps = set.reps;
+  let editWeight = set.weight || 0;
+  let editIncrement = getWeightIncrementPref(set.station_id);
+  const stationName = set.stations?.name || "";
+
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-body">
+        <div class="m-stat-block">
+          <div class="label">Edit set — ${escapeHtmlMobile(stationName)}</div>
+        </div>
+
+        <div class="m-stepper-full">
+          <div class="m-stepper-label">Reps</div>
+          <div class="m-stepper-control">
+            <button class="m-stepper-btn" id="m-edit-reps-minus" type="button">−</button>
+            <input class="m-stepper-value" id="m-edit-reps-value" inputmode="numeric" value="${editReps}" />
+            <button class="m-stepper-btn" id="m-edit-reps-plus" type="button">+</button>
+          </div>
+        </div>
+
+        <div class="m-stepper-full">
+          <div class="m-stepper-label">Weight (kg)</div>
+          <div class="m-stepper-control">
+            <button class="m-stepper-btn" id="m-edit-weight-minus" type="button">−</button>
+            <input class="m-stepper-value" id="m-edit-weight-value" inputmode="decimal" value="${editWeight}" />
+            <button class="m-stepper-btn" id="m-edit-weight-plus" type="button">+</button>
+          </div>
+          <div class="m-increment-row">
+            ${[1, 2.5, 5, 10]
+              .map((v) => `<button type="button" class="m-increment-chip ${v === editIncrement ? "active" : ""}" data-inc="${v}">±${v}</button>`)
+              .join("")}
+          </div>
+        </div>
+      </div>
+
+      <div class="m-sheet-footer">
+        <button class="m-start-btn" id="m-edit-set-save-btn" style="width:100%;max-width:none;margin-bottom:10px;">Save Changes</button>
+        <button class="m-finish-btn" id="m-edit-set-cancel-btn" style="width:100%;padding:12px;">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  document.getElementById("m-edit-reps-minus").addEventListener("click", () => {
+    editReps = Math.max(0, editReps - 1);
+    document.getElementById("m-edit-reps-value").value = editReps;
+  });
+  document.getElementById("m-edit-reps-plus").addEventListener("click", () => {
+    editReps = editReps + 1;
+    document.getElementById("m-edit-reps-value").value = editReps;
+  });
+  document.getElementById("m-edit-weight-minus").addEventListener("click", () => {
+    editWeight = Math.max(0, +(editWeight - editIncrement).toFixed(2));
+    document.getElementById("m-edit-weight-value").value = editWeight;
+  });
+  document.getElementById("m-edit-weight-plus").addEventListener("click", () => {
+    editWeight = +(editWeight + editIncrement).toFixed(2);
+    document.getElementById("m-edit-weight-value").value = editWeight;
+  });
+
+  overlay.querySelectorAll(".m-increment-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      editIncrement = parseFloat(chip.dataset.inc);
+      saveWeightIncrementPref(set.station_id, editIncrement);
+      overlay.querySelectorAll(".m-increment-chip").forEach((c) => c.classList.toggle("active", c === chip));
+    });
+  });
+
+  document.getElementById("m-edit-reps-value").addEventListener("change", (e) => {
+    editReps = Math.max(0, parseInt(e.target.value, 10) || 0);
+    e.target.value = editReps;
+  });
+  document.getElementById("m-edit-weight-value").addEventListener("change", (e) => {
+    editWeight = Math.max(0, parseFloat(e.target.value) || 0);
+    e.target.value = editWeight;
+  });
+
+  document.getElementById("m-edit-set-cancel-btn").addEventListener("click", () => overlay.remove());
+
+  document.getElementById("m-edit-set-save-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("m-edit-set-save-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    beginMutation();
+    const { error } = await supabaseClient
+      .from("workout_sets")
+      .update({ reps: editReps, weight: editWeight || null })
+      .eq("id", set.id);
+    endMutation();
+
+    if (error) {
+      alert("Failed to save: " + error.message);
+      btn.disabled = false;
+      btn.textContent = "Save Changes";
+      return;
+    }
+
+    overlay.remove();
+    if (options && options.onSaved) options.onSaved({ reps: editReps, weight: editWeight || null });
+  });
 }
 
 function adjustStepper(type, delta) {
@@ -550,9 +689,7 @@ async function markPRResult(setId, result) {
     mPendingPRSetId = null;
     document.getElementById("m-pr-tag-slot").innerHTML = "";
     document.getElementById("m-set-list").innerHTML = renderSetList();
-    document.querySelectorAll(".delete-btn[data-set-id]").forEach((btn) => {
-      btn.addEventListener("click", () => deleteSetMobile(btn.dataset.setId));
-    });
+    wireSetListButtons();
 
     if (result === "success") {
       const set2 = mCurrentWorkout.workout_sets.find((s) => s.id === setId);
@@ -584,9 +721,7 @@ async function deleteSetMobile(setId) {
   }
   mCurrentWorkout.workout_sets = mCurrentWorkout.workout_sets.filter((s) => s.id !== setId);
   document.getElementById("m-set-list").innerHTML = renderSetList();
-  document.querySelectorAll(".delete-btn[data-set-id]").forEach((btn) => {
-    btn.addEventListener("click", () => deleteSetMobile(btn.dataset.setId));
-  });
+  wireSetListButtons();
 }
 
 /* ============================================
@@ -641,7 +776,9 @@ function openStationSheet() {
   overlay.innerHTML = `
     <div class="m-sheet">
       <div class="m-sheet-handle"></div>
-      ${stationsCache.map((s) => `<div class="m-sheet-item" data-id="${s.id}">${escapeHtmlMobile(s.name)}</div>`).join("")}
+      <div class="m-sheet-body">
+        ${stationsCache.map((s) => `<div class="m-sheet-item" data-id="${s.id}">${escapeHtmlMobile(s.name)}</div>`).join("")}
+      </div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -755,8 +892,8 @@ async function loadJournalDay() {
 /** Collapsed summary only — tap opens the detail sheet, swipe reveals
  *  real action buttons that stay open until tapped (or dismissed). */
 function renderJournalWorkoutCard(workout) {
-  const volume = workout.workout_sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
   const stationCount = new Set(workout.workout_sets.map((s) => s.station_id)).size;
+  const setCount = workout.workout_sets.length;
   const duration = workout.ended_at
     ? formatDuration(new Date(workout.ended_at) - new Date(workout.started_at))
     : "in progress";
@@ -768,7 +905,7 @@ function renderJournalWorkoutCard(workout) {
       <div class="m-journal-card" data-workout-id="${workout.id}">
         <div class="m-journal-card-header">
           <div class="name">${escapeHtmlMobile(workout.name || "Workout")}</div>
-          <div class="meta">${new Date(workout.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${duration} · ${stationCount} station${stationCount === 1 ? "" : "s"} · ${Math.round(volume)}kg volume</div>
+          <div class="meta">${new Date(workout.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${duration} · ${stationCount} station${stationCount === 1 ? "" : "s"} · ${setCount} set${setCount === 1 ? "" : "s"}</div>
         </div>
         <div class="m-journal-tap-hint">Tap for details</div>
       </div>
@@ -878,17 +1015,21 @@ function openJournalEditSheet(workout) {
   overlay.innerHTML = `
     <div class="m-sheet">
       <div class="m-sheet-handle"></div>
-      <div class="m-stat-block">
-        <div class="label">Session name</div>
-        <input type="text" id="m-edit-name" value="${escapeHtmlMobile(workout.name || "")}"
-               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+      <div class="m-sheet-body">
+        <div class="m-stat-block">
+          <div class="label">Session name</div>
+          <input type="text" id="m-edit-name" value="${escapeHtmlMobile(workout.name || "")}"
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
+        <div class="m-stat-block">
+          <div class="label">Notes</div>
+          <textarea id="m-edit-notes" rows="4"
+                    style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;font-family:var(--font-mono);">${escapeHtmlMobile(workout.notes || "")}</textarea>
+        </div>
       </div>
-      <div class="m-stat-block">
-        <div class="label">Notes</div>
-        <textarea id="m-edit-notes" rows="3"
-                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;font-family:var(--font-mono);">${escapeHtmlMobile(workout.notes || "")}</textarea>
+      <div class="m-sheet-footer">
+        <button class="m-start-btn" id="m-edit-save-btn" style="width:100%;max-width:none;">Save</button>
       </div>
-      <button class="m-start-btn" id="m-edit-save-btn" style="width:100%;max-width:none;">Save</button>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -925,13 +1066,17 @@ async function openJournalDetailSheet(workout) {
   overlay.innerHTML = `
     <div class="m-sheet">
       <div class="m-sheet-handle"></div>
-      <div class="m-stat-block">
-        <div class="label">${escapeHtmlMobile(workout.name || "Workout")}</div>
-        <div class="m-stat-row"><span class="k">${new Date(workout.started_at).toLocaleString()}</span></div>
+      <div class="m-sheet-body">
+        <div class="m-stat-block">
+          <div class="label">${escapeHtmlMobile(workout.name || "Workout")}</div>
+          <div class="m-stat-row"><span class="k">${new Date(workout.started_at).toLocaleString()}</span></div>
+        </div>
+        <div id="m-detail-stations"><div class="m-empty" style="height:auto;padding:20px;"><p>Loading comparisons...</p></div></div>
+        ${workout.notes ? `<div class="m-stat-block"><div class="label">Notes</div><div class="m-stat-row"><span class="k">${escapeHtmlMobile(workout.notes)}</span></div></div>` : ""}
       </div>
-      <div id="m-detail-stations"><div class="m-empty" style="height:auto;padding:20px;"><p>Loading comparisons...</p></div></div>
-      ${workout.notes ? `<div class="m-stat-block"><div class="label">Notes</div><div class="m-stat-row"><span class="k">${escapeHtmlMobile(workout.notes)}</span></div></div>` : ""}
-      <button class="m-start-btn" id="m-detail-edit-btn" style="width:100%;max-width:none;">✎ Edit session</button>
+      <div class="m-sheet-footer">
+        <button class="m-start-btn" id="m-detail-edit-btn" style="width:100%;max-width:none;">✎ Edit session</button>
+      </div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -953,7 +1098,6 @@ async function openJournalDetailSheet(workout) {
 
   const blocks = await Promise.all(
     Object.entries(grouped).map(async ([stationId, group]) => {
-      const thisVolume = group.sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
       const thisBest = Math.max(...group.sets.map((s) => s.weight || 0));
 
       const [comparison, allTimePR] = await Promise.all([
@@ -964,28 +1108,32 @@ async function openJournalDetailSheet(workout) {
       const prWeight = allTimePR.data && allTimePR.data.length > 0 ? allTimePR.data[0].weight : null;
 
       let comparisonLine = "First time logging this station";
-      if (comparison) {
-        const delta = Math.round(thisVolume - comparison.volume);
-        if (delta > 0) comparisonLine = `↑ Improved — volume +${delta}kg vs ${new Date(comparison.date).toLocaleDateString()}`;
-        else if (delta < 0) comparisonLine = `↓ Declined — volume ${delta}kg vs ${new Date(comparison.date).toLocaleDateString()}`;
-        else comparisonLine = `→ Same volume as ${new Date(comparison.date).toLocaleDateString()}`;
+      if (comparison && comparison.bestWeight != null) {
+        const delta = Math.round((thisBest - comparison.bestWeight) * 10) / 10;
+        if (delta > 0) comparisonLine = `↑ Improved — ${delta}kg heavier vs ${new Date(comparison.date).toLocaleDateString()}`;
+        else if (delta < 0) comparisonLine = `↓ Declined — ${Math.abs(delta)}kg lighter vs ${new Date(comparison.date).toLocaleDateString()}`;
+        else comparisonLine = `→ Same weight as ${new Date(comparison.date).toLocaleDateString()}`;
       }
 
-      const setsLine = group.sets
+      const setsHtml = group.sets
         .map((s) => {
           let tag = "";
           if (s.weight && prWeight && s.weight >= prWeight) tag += " 🏆";
           if (s.is_pr_attempt) {
             tag += s.pr_result === "success" ? " 🎯✅" : s.pr_result === "failure" ? " 🎯❌" : " 🎯⏳";
           }
-          return `${s.reps}${s.weight ? `×${s.weight}kg` : ""}${tag}`;
+          return `
+            <div class="m-journal-set-row">
+              <span>${s.reps}${s.weight ? `×${s.weight}kg` : ""}${tag}</span>
+              <button type="button" class="m-journal-set-edit-btn" data-set-id="${s.id}" aria-label="Edit set">✎</button>
+            </div>`;
         })
-        .join(" · ");
+        .join("");
 
       return `
         <div class="m-journal-station-block">
           <div class="m-journal-station-name">${escapeHtmlMobile(group.name)}</div>
-          <div class="m-journal-station-sets">${setsLine}</div>
+          <div class="m-journal-station-sets">${setsHtml}</div>
           <div class="m-journal-comparison">${comparisonLine}</div>
         </div>
       `;
@@ -994,10 +1142,25 @@ async function openJournalDetailSheet(workout) {
 
   const slot = document.getElementById("m-detail-stations");
   if (slot) slot.innerHTML = blocks.join("");
+
+  slot.querySelectorAll(".m-journal-set-edit-btn[data-set-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const set = workout.workout_sets.find((s) => s.id === btn.dataset.setId);
+      if (!set) return;
+      openSetEditSheet(set, {
+        onSaved: (updated) => {
+          set.reps = updated.reps;
+          set.weight = updated.weight;
+          overlay.remove();
+          openJournalDetailSheet(workout); // re-render with the updated value
+        },
+      });
+    });
+  });
 }
 
 /** Finds the most recent PRIOR workout (before this one) that used this
- *  station, and returns its total volume for comparison. */
+ *  station, and returns its best (heaviest) set for comparison. */
 async function computeStationComparison(stationId, beforeStartedAt) {
   const { data } = await supabaseClient
     .from("workout_sets")
@@ -1012,9 +1175,9 @@ async function computeStationComparison(stationId, beforeStartedAt) {
 
   const mostRecentWorkoutId = priorSets[0].workouts.id;
   const priorSessionSets = priorSets.filter((s) => s.workouts.id === mostRecentWorkoutId);
-  const volume = priorSessionSets.reduce((sum, s) => sum + s.reps * (s.weight || 0), 0);
+  const bestWeight = Math.max(...priorSessionSets.map((s) => s.weight || 0));
 
-  return { volume, date: priorSessionSets[0].workouts.started_at };
+  return { bestWeight, date: priorSessionSets[0].workouts.started_at };
 }
 
 function formatDuration(ms) {
@@ -1030,41 +1193,98 @@ function formatDuration(ms) {
    log-only by design.
    ============================================ */
 async function openSettingsSheet() {
-  const { data: userData } = await supabaseClient.auth.getUser();
-  const { data: profile } = await supabaseClient.from("profiles").select("username, auto_logout_minutes").single();
-  const email = userData?.user?.email || "—";
-
   const root = document.getElementById("m-settings-root");
   root.innerHTML = `
     <div class="m-sheet-overlay" id="m-settings-overlay">
       <div class="m-sheet">
         <div class="m-sheet-handle"></div>
-
-        <div class="m-status-line">
-          <span class="status-dot" id="m-status-dot"></span>
-          <span id="m-status-text">Checking...</span>
-          <span class="m-status-deployed">Last deployed: ${LAST_DEPLOYED}</span>
+        <div class="m-sheet-body">
+          <div class="m-empty" style="height:auto;padding:30px;"><p>Loading settings...</p></div>
         </div>
-
-        <div class="m-stat-block">
-          <div class="label">Signed in as</div>
-          <div class="m-stat-row"><span class="k">${escapeHtmlMobile(profile?.username || email)}</span></div>
-        </div>
-
-        <div class="m-stat-block">
-          <div class="label">Auto-logout after inactivity</div>
-          <select class="m-routine-picker" id="m-auto-logout-select" style="max-width:none;">
-            <option value="0">Never</option>
-            <option value="5">5 minutes</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="60">1 hour</option>
-          </select>
-        </div>
-
-        <button class="m-start-btn" id="m-export-btn" style="width:100%;max-width:none;margin-bottom:10px;">⬇ Export my data</button>
-        <button class="m-finish-btn" id="m-signout-btn" style="width:100%;padding:14px;">Sign out</button>
       </div>
+    </div>
+  `;
+  const overlay = document.getElementById("m-settings-overlay");
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) root.innerHTML = "";
+  });
+
+  try {
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+    if (userError) throw userError;
+
+    const { data: profile, error: profileError } = await supabaseClient
+      .from("profiles")
+      .select("username, auto_logout_minutes")
+      .maybeSingle();
+    if (profileError) throw profileError;
+
+    const email = userData?.user?.email || "—";
+    renderSettingsSheetBody(profile, email);
+  } catch (err) {
+    console.error("Settings failed to load:", err);
+    const body = overlay.querySelector(".m-sheet-body");
+    if (body) {
+      body.innerHTML = `
+        <div class="m-empty" style="height:auto;padding:30px;">
+          <div class="big">Couldn't load settings</div>
+          <p>${escapeHtmlMobile(err.message || "Unknown error")}</p>
+        </div>
+      `;
+    }
+  }
+}
+
+function renderSettingsSheetBody(profile, email) {
+  const overlay = document.getElementById("m-settings-overlay");
+  if (!overlay) return;
+
+  overlay.querySelector(".m-sheet").innerHTML = `
+    <div class="m-sheet-handle"></div>
+    <div class="m-sheet-body">
+      <div class="m-status-line">
+        <span class="status-dot" id="m-status-dot"></span>
+        <span id="m-status-text">Checking...</span>
+        <span class="m-status-deployed">Last deployed: ${LAST_DEPLOYED}</span>
+      </div>
+
+      <div class="m-stat-block">
+        <div class="label">Username (used to sign in)</div>
+        <input type="text" id="m-settings-username" value="${escapeHtmlMobile(profile?.username || "")}"
+               placeholder="e.g. nathan" autocapitalize="off" autocorrect="off"
+               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        <div class="error-text" id="m-settings-username-msg" style="margin-top:6px;"></div>
+        <button class="btn-ghost" id="m-settings-username-save" style="width:100%;margin-top:8px;">Save username</button>
+      </div>
+
+      <div class="m-stat-block">
+        <div class="label">Signed in with</div>
+        <div class="m-stat-row"><span class="k">${escapeHtmlMobile(email)}</span></div>
+      </div>
+
+      <div class="m-stat-block">
+        <div class="label">Auto-logout after inactivity</div>
+        <select class="m-routine-picker" id="m-auto-logout-select" style="max-width:none;">
+          <option value="0">Never</option>
+          <option value="5">5 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="60">1 hour</option>
+        </select>
+      </div>
+
+      <div class="m-stat-block">
+        <div class="label">Change password</div>
+        <input type="password" id="m-settings-new-password" placeholder="At least 6 characters"
+               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        <div class="error-text" id="m-settings-password-msg" style="margin-top:6px;"></div>
+        <button class="btn-ghost" id="m-settings-password-save" style="width:100%;margin-top:8px;">Update password</button>
+      </div>
+    </div>
+
+    <div class="m-sheet-footer">
+      <button class="m-start-btn" id="m-export-btn" style="width:100%;max-width:none;margin-bottom:10px;">⬇ Export my data</button>
+      <button class="m-finish-btn" id="m-signout-btn" style="width:100%;padding:14px;">Sign out</button>
     </div>
   `;
 
@@ -1072,17 +1292,77 @@ async function openSettingsSheet() {
   refreshStatusLights(); // instant reflection of current known state
   runMobileConnectivityCheck(); // then verify freshness
 
-  const overlay = document.getElementById("m-settings-overlay");
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) root.innerHTML = "";
-  });
   document.getElementById("m-signout-btn").addEventListener("click", signOut);
   document.getElementById("m-export-btn").addEventListener("click", exportDataMobile);
+
   document.getElementById("m-auto-logout-select").addEventListener("change", async (e) => {
     const minutes = parseInt(e.target.value, 10);
     await supabaseClient.from("profiles").upsert({ id: currentUserId, auto_logout_minutes: minutes }, { onConflict: "id" });
     if (typeof updateAutoLogoutMinutes === "function") updateAutoLogoutMinutes(minutes);
   });
+
+  document.getElementById("m-settings-username-save").addEventListener("click", saveUsernameMobile);
+  document.getElementById("m-settings-password-save").addEventListener("click", changePasswordMobile);
+}
+
+async function saveUsernameMobile() {
+  const msg = document.getElementById("m-settings-username-msg");
+  const username = document.getElementById("m-settings-username").value.trim().toLowerCase();
+  msg.style.color = "var(--danger)";
+  msg.textContent = "";
+
+  if (!username || !/^[a-z0-9_]{3,20}$/.test(username)) {
+    msg.textContent = "Use 3-20 characters: lowercase letters, numbers, underscores.";
+    return;
+  }
+
+  const btn = document.getElementById("m-settings-username-save");
+  btn.disabled = true;
+  btn.textContent = "Saving...";
+
+  beginMutation();
+  const { error } = await supabaseClient.from("profiles").upsert({ id: currentUserId, username }, { onConflict: "id" });
+  endMutation();
+
+  btn.disabled = false;
+  btn.textContent = "Save username";
+
+  if (error) {
+    msg.textContent = error.message.includes("duplicate") ? "That username is taken." : error.message;
+    return;
+  }
+  msg.style.color = "var(--success)";
+  msg.textContent = "Saved. Use it to sign in next time.";
+}
+
+async function changePasswordMobile() {
+  const msg = document.getElementById("m-settings-password-msg");
+  const input = document.getElementById("m-settings-new-password");
+  const password = input.value;
+  msg.style.color = "var(--danger)";
+  msg.textContent = "";
+
+  if (password.length < 6) {
+    msg.textContent = "Password must be at least 6 characters.";
+    return;
+  }
+
+  const btn = document.getElementById("m-settings-password-save");
+  btn.disabled = true;
+  btn.textContent = "Updating...";
+
+  const { error } = await supabaseClient.auth.updateUser({ password });
+
+  btn.disabled = false;
+  btn.textContent = "Update password";
+
+  if (error) {
+    msg.textContent = error.message;
+    return;
+  }
+  msg.style.color = "var(--success)";
+  msg.textContent = "Password updated.";
+  input.value = "";
 }
 
 async function runMobileConnectivityCheck() {
@@ -1137,13 +1417,17 @@ function openAddStationSheet() {
   overlay.innerHTML = `
     <div class="m-sheet">
       <div class="m-sheet-handle"></div>
-      <div class="m-stat-block" style="margin-bottom:14px;">
-        <div class="label">New station</div>
-        <input type="text" id="m-new-station-name" placeholder="e.g. Leg Press" autofocus
-               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
-                      color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+      <div class="m-sheet-body">
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">New station</div>
+          <input type="text" id="m-new-station-name" placeholder="e.g. Leg Press" autofocus
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+                        color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
       </div>
-      <button class="m-start-btn" id="m-save-station-btn" style="width:100%;max-width:none;">Save</button>
+      <div class="m-sheet-footer">
+        <button class="m-start-btn" id="m-save-station-btn" style="width:100%;max-width:none;">Save</button>
+      </div>
     </div>
   `;
   document.body.appendChild(overlay);

@@ -469,6 +469,115 @@ input[type="number"] {
   color: var(--gold);
 }
 
+/* ============================================
+   Dashboard quick actions
+   ============================================ */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.quick-action-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 16px;
+  text-align: left;
+  transition: border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.quick-action-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.quick-action-btn:active {
+  transform: translateY(2px);
+}
+
+.quick-action-btn .icon {
+  font-size: 22px;
+  margin-bottom: 10px;
+}
+
+.quick-action-btn .label {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+/* ============================================
+   Station progress (merged from Statistics)
+   ============================================ */
+.section-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.03em;
+  margin: 8px 0 14px;
+  color: var(--text);
+}
+
+.station-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.station-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.station-stat-card .header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.station-stat-card .station-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.station-stat-card .trend-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.trend-badge.up {
+  background: rgba(74, 222, 128, 0.15);
+  color: var(--success);
+}
+
+.trend-badge.down {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--danger);
+}
+
+.trend-badge.same {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.station-stat-card .meta-line {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.station-stat-card canvas {
+  max-height: 90px;
+}
+
 .admin-section-title {
   font-family: var(--font-display);
   font-size: 18px;

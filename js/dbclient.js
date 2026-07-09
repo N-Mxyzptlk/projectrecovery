@@ -168,13 +168,13 @@ function refreshStatusLights() {
   let status, label;
   if (!lastHealthOk) {
     status = "red";
-    label = "Database down, unable to log";
+    label = "Status: Systems Down";
   } else if (mutationInFlight > 0) {
     status = "yellow";
-    label = "Logging in progress";
+    label = "Status: Logging";
   } else {
     status = "green";
-    label = "All systems good, ready to record";
+    label = "Status: Running";
   }
 
   // Update whichever status elements currently exist in the DOM (desktop

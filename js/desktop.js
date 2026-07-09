@@ -5,9 +5,7 @@
 
 let currentUserId = null;
 let stationsCache = [];   // refreshed on load, reused by routine/workout forms
-let dashboardVolumeChart = null;
-let statsVolumeChart = null;
-let statsFrequencyChart = null;
+let stationStatCharts = {}; // keyed by station id, so we can destroy/recreate on reload
 
 function initDesktopApp(session) {
   currentUserId = session.user.id;
@@ -55,7 +53,6 @@ function switchView(viewName) {
   if (viewName === "stations") loadStations();
   if (viewName === "routines") loadRoutines();
   if (viewName === "workouts") loadWorkouts();
-  if (viewName === "stats") loadStats();
   if (viewName === "admin") loadAdmin();
 }
 
@@ -86,113 +83,71 @@ function escapeHtml(str) {
    DASHBOARD
    ============================================ */
 async function loadDashboard() {
-  const statsGrid = document.getElementById("dashboard-stats");
-  const recentBox = document.getElementById("dashboard-recent");
-  statsGrid.innerHTML = `<div class="stat-card"><div class="label">Loading...</div></div>`;
-  recentBox.innerHTML = "";
+  renderQuickActions();
+  await loadRecentWorkouts();
+  await loadStationStats();
+}
 
-  const eightWeeksAgo = new Date();
-  eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+function renderQuickActions() {
+  const box = document.getElementById("dashboard-quick-actions");
+  box.innerHTML = `
+    <button class="quick-action-btn" id="qa-start-workout">
+      <div class="icon">▣</div>
+      <div class="label">Start Workout</div>
+    </button>
+    <button class="quick-action-btn" id="qa-new-station">
+      <div class="icon">■</div>
+      <div class="label">New Station</div>
+    </button>
+    <button class="quick-action-btn" id="qa-new-routine">
+      <div class="icon">▤</div>
+      <div class="label">New Routine</div>
+    </button>
+    <button class="quick-action-btn" id="qa-export">
+      <div class="icon">⬇</div>
+      <div class="label">Export Data</div>
+    </button>
+  `;
+  document.getElementById("qa-start-workout").addEventListener("click", () => openStartWorkoutModal());
+  document.getElementById("qa-new-station").addEventListener("click", () => openStationModal());
+  document.getElementById("qa-new-routine").addEventListener("click", () => openRoutineModal());
+  document.getElementById("qa-export").addEventListener("click", () => {
+    if (typeof exportAllData === "function") exportAllData();
+  });
+}
+
+async function loadRecentWorkouts() {
+  const recentBox = document.getElementById("dashboard-recent");
+  recentBox.innerHTML = `<div class="empty-state">Loading...</div>`;
 
   const { data: workouts, error } = await supabaseClient
     .from("workouts")
-    .select("*, workout_sets(reps, weight, created_at)")
-    .gte("started_at", eightWeeksAgo.toISOString())
-    .order("started_at", { ascending: false });
+    .select("*, workout_sets(id)")
+    .order("started_at", { ascending: false })
+    .limit(5);
 
   if (error) {
-    statsGrid.innerHTML = `<div class="stat-card"><div class="label">Error loading data</div></div>`;
+    recentBox.innerHTML = `<div class="empty-state">Error loading recent workouts</div>`;
     console.error(error);
     return;
   }
 
-  const totalWorkouts = workouts.length;
-  const totalSets = workouts.reduce((sum, w) => sum + w.workout_sets.length, 0);
-  const totalVolume = workouts.reduce(
-    (sum, w) => sum + w.workout_sets.reduce((s, set) => s + (set.reps * (set.weight || 0)), 0),
-    0
-  );
-  const thisWeekCount = workouts.filter((w) => {
-    const daysAgo = (Date.now() - new Date(w.started_at)) / (1000 * 60 * 60 * 24);
-    return daysAgo <= 7;
-  }).length;
-
-  statsGrid.innerHTML = `
-    <div class="stat-card">
-      <div class="label">Workouts (8wk)</div>
-      <div class="value">${totalWorkouts}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">This week</div>
-      <div class="value">${thisWeekCount}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Total sets (8wk)</div>
-      <div class="value">${totalSets}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Volume (8wk)</div>
-      <div class="value">${Math.round(totalVolume).toLocaleString()}<span class="unit">kg</span></div>
-    </div>
-  `;
-
-  renderWeeklyVolumeChart("dashboard-volume-chart", workouts, (chart) => {
-    if (dashboardVolumeChart) dashboardVolumeChart.destroy();
-    dashboardVolumeChart = chart;
-  });
-
-  const recent = workouts.slice(0, 5);
-  if (recent.length === 0) {
+  if (!workouts || workouts.length === 0) {
     recentBox.innerHTML = `<div class="empty-state"><div class="big">No workouts yet</div><p>Start one to see it here.</p></div>`;
-  } else {
-    recentBox.innerHTML = recent
-      .map((w) => {
-        const volume = w.workout_sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
-        return `
-        <div class="card-row">
-          <div>
-            <div class="title">${escapeHtml(w.name || "Workout")}</div>
-            <div class="meta">${new Date(w.started_at).toLocaleDateString()} · ${w.workout_sets.length} sets · ${Math.round(volume)}kg volume</div>
-          </div>
-        </div>`;
-      })
-      .join("");
+    return;
   }
-}
 
-function renderWeeklyVolumeChart(canvasId, workouts, onCreate) {
-  const weekBuckets = {};
-  for (let i = 7; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i * 7);
-    const key = `Wk ${8 - i}`;
-    weekBuckets[key] = 0;
-  }
-  const labels = Object.keys(weekBuckets);
-
-  workouts.forEach((w) => {
-    const daysAgo = Math.floor((Date.now() - new Date(w.started_at)) / (1000 * 60 * 60 * 24));
-    const weekIndex = Math.min(7, Math.floor(daysAgo / 7));
-    const label = labels[7 - weekIndex];
-    const volume = w.workout_sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
-    if (label) weekBuckets[label] += volume;
-  });
-
-  const ctx = document.getElementById(canvasId).getContext("2d");
-  const chart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        label: "Volume (kg)",
-        data: Object.values(weekBuckets),
-        backgroundColor: "#6c63ff",
-        borderRadius: 4,
-      }],
-    },
-    options: chartBaseOptions(),
-  });
-  onCreate(chart);
+  recentBox.innerHTML = workouts
+    .map(
+      (w) => `
+      <div class="card-row">
+        <div>
+          <div class="title">${escapeHtml(w.name || "Workout")}</div>
+          <div class="meta">${new Date(w.started_at).toLocaleDateString()} · ${w.workout_sets.length} set${w.workout_sets.length === 1 ? "" : "s"}${!w.ended_at ? " · in progress" : ""}</div>
+        </div>
+      </div>`
+    )
+    .join("");
 }
 
 function chartBaseOptions() {
@@ -204,6 +159,108 @@ function chartBaseOptions() {
       y: { grid: { color: "#2a2a38" }, ticks: { color: "#8b8b9e" } },
     },
   };
+}
+
+/* ============================================
+   Station Progress (formerly the separate Statistics tab) — per-station
+   weight-lifted trend, since "did I get stronger on this exercise" is
+   the actually useful question, not an aggregate volume number.
+   ============================================ */
+async function loadStationStats() {
+  const box = document.getElementById("dashboard-station-stats");
+  box.innerHTML = `<div class="empty-state">Loading...</div>`;
+
+  const { data: workouts, error } = await supabaseClient
+    .from("workouts")
+    .select("id, started_at, workout_sets(station_id, weight, stations(name))")
+    .order("started_at", { ascending: true });
+
+  if (error) {
+    box.innerHTML = `<div class="empty-state">Error loading station progress</div>`;
+    console.error(error);
+    return;
+  }
+
+  // stationId -> { name, sessions: [{date, maxWeight}] }
+  const byStation = {};
+  (workouts || []).forEach((w) => {
+    const perStationMax = {};
+    w.workout_sets.forEach((s) => {
+      if (s.weight == null) return; // bodyweight sets don't factor into a weight trend
+      if (!perStationMax[s.station_id] || s.weight > perStationMax[s.station_id].weight) {
+        perStationMax[s.station_id] = { weight: s.weight, name: s.stations.name };
+      }
+    });
+    Object.entries(perStationMax).forEach(([stationId, { weight, name }]) => {
+      if (!byStation[stationId]) byStation[stationId] = { name, sessions: [] };
+      byStation[stationId].sessions.push({ date: w.started_at, weight });
+    });
+  });
+
+  const entries = Object.entries(byStation);
+  if (entries.length === 0) {
+    box.innerHTML = `<div class="empty-state"><div class="big">No weighted sets yet</div><p>Log some sets with weight to see progress here.</p></div>`;
+    return;
+  }
+
+  Object.values(stationStatCharts).forEach((chart) => chart.destroy());
+  stationStatCharts = {};
+
+  box.innerHTML = entries
+    .map(([stationId, data]) => {
+      const sessions = data.sessions;
+      const timesLogged = sessions.length;
+      let trendClass = "same";
+      let trendLabel = "First session";
+      if (sessions.length >= 2) {
+        const last = sessions[sessions.length - 1].weight;
+        const prev = sessions[sessions.length - 2].weight;
+        if (last > prev) {
+          trendClass = "up";
+          trendLabel = `↑ +${Math.round((last - prev) * 10) / 10}kg`;
+        } else if (last < prev) {
+          trendClass = "down";
+          trendLabel = `↓ ${Math.round((last - prev) * 10) / 10}kg`;
+        } else {
+          trendClass = "same";
+          trendLabel = "→ Same";
+        }
+      }
+
+      return `
+        <div class="station-stat-card">
+          <div class="header-row">
+            <div class="station-name">${escapeHtml(data.name)}</div>
+            <div class="trend-badge ${trendClass}">${trendLabel}</div>
+          </div>
+          <div class="meta-line">Logged ${timesLogged} time${timesLogged === 1 ? "" : "s"}</div>
+          <canvas id="station-chart-${stationId}" height="90"></canvas>
+        </div>
+      `;
+    })
+    .join("");
+
+  entries.forEach(([stationId, data]) => {
+    const ctx = document.getElementById(`station-chart-${stationId}`);
+    if (!ctx) return;
+    const chart = new Chart(ctx.getContext("2d"), {
+      type: "line",
+      data: {
+        labels: data.sessions.map((s) => new Date(s.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
+        datasets: [{
+          label: "Weight (kg)",
+          data: data.sessions.map((s) => s.weight),
+          borderColor: "#6c63ff",
+          backgroundColor: "rgba(108,99,255,0.15)",
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+        }],
+      },
+      options: chartBaseOptions(),
+    });
+    stationStatCharts[stationId] = chart;
+  });
 }
 
 /* ============================================
@@ -657,130 +714,4 @@ async function deleteWorkout(workoutId) {
   const { error } = await supabaseClient.from("workouts").delete().eq("id", workoutId);
   if (error) return alert("Failed to delete: " + error.message);
   loadWorkouts();
-}
-
-/* ============================================
-   STATISTICS
-   ============================================ */
-async function loadStats() {
-  const twelveWeeksAgo = new Date();
-  twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 84);
-
-  const { data: workouts, error } = await supabaseClient
-    .from("workouts")
-    .select("*, workout_sets(*, stations(name))")
-    .gte("started_at", twelveWeeksAgo.toISOString())
-    .order("started_at");
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  renderStatsVolumeChart(workouts);
-  renderStatsFrequencyChart(workouts);
-  renderPRTable(workouts);
-}
-
-function renderStatsVolumeChart(workouts) {
-  const buckets = {};
-  for (let i = 11; i >= 0; i--) {
-    buckets[`Wk ${12 - i}`] = 0;
-  }
-  const labels = Object.keys(buckets);
-
-  workouts.forEach((w) => {
-    const daysAgo = Math.floor((Date.now() - new Date(w.started_at)) / (1000 * 60 * 60 * 24));
-    const weekIndex = Math.min(11, Math.floor(daysAgo / 7));
-    const label = labels[11 - weekIndex];
-    const volume = w.workout_sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
-    if (label) buckets[label] += volume;
-  });
-
-  const ctx = document.getElementById("stats-volume-chart").getContext("2d");
-  if (statsVolumeChart) statsVolumeChart.destroy();
-  statsVolumeChart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{
-        label: "Volume (kg)",
-        data: Object.values(buckets),
-        borderColor: "#6c63ff",
-        backgroundColor: "rgba(108,99,255,0.15)",
-        fill: true,
-        tension: 0.3,
-      }],
-    },
-    options: chartBaseOptions(),
-  });
-}
-
-function renderStatsFrequencyChart(workouts) {
-  const buckets = {};
-  for (let i = 11; i >= 0; i--) {
-    buckets[`Wk ${12 - i}`] = 0;
-  }
-  const labels = Object.keys(buckets);
-
-  workouts.forEach((w) => {
-    const daysAgo = Math.floor((Date.now() - new Date(w.started_at)) / (1000 * 60 * 60 * 24));
-    const weekIndex = Math.min(11, Math.floor(daysAgo / 7));
-    const label = labels[11 - weekIndex];
-    if (label) buckets[label] += 1;
-  });
-
-  const ctx = document.getElementById("stats-frequency-chart").getContext("2d");
-  if (statsFrequencyChart) statsFrequencyChart.destroy();
-  statsFrequencyChart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        label: "Workouts",
-        data: Object.values(buckets),
-        backgroundColor: "#4ade80",
-        borderRadius: 4,
-      }],
-    },
-    options: chartBaseOptions(),
-  });
-}
-
-function renderPRTable(workouts) {
-  const prs = {}; // station name -> { weight, reps, date }
-
-  workouts.forEach((w) => {
-    w.workout_sets.forEach((s) => {
-      if (!s.weight) return;
-      const name = s.stations.name;
-      if (!prs[name] || s.weight > prs[name].weight) {
-        prs[name] = { weight: s.weight, reps: s.reps, date: w.started_at };
-      }
-    });
-  });
-
-  const rows = Object.entries(prs);
-  const el = document.getElementById("stats-prs");
-
-  if (rows.length === 0) {
-    el.innerHTML = `<div class="empty-state">No weighted sets logged in the last 12 weeks yet.</div>`;
-    return;
-  }
-
-  el.innerHTML = `
-    <div class="card-row" style="border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);text-transform:uppercase;">
-      <div style="flex:1;">Station</div>
-      <div style="width:160px;">Best set (12wk)</div>
-    </div>
-    ${rows
-      .map(
-        ([name, pr]) => `
-      <div class="card-row">
-        <div class="title">${escapeHtml(name)}</div>
-        <div class="meta">${pr.weight}kg × ${pr.reps} — ${new Date(pr.date).toLocaleDateString()}</div>
-      </div>`
-      )
-      .join("")}
-  `;
 }

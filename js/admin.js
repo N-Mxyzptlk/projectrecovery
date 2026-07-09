@@ -7,7 +7,7 @@ async function loadAdmin() {
   const { data: userData } = await supabaseClient.auth.getUser();
   document.getElementById("admin-user-email").textContent = userData?.user?.email || "—";
 
-  const { data: profile } = await supabaseClient.from("profiles").select("username, auto_logout_minutes").single();
+  const { data: profile } = await supabaseClient.from("profiles").select("username, auto_logout_minutes").maybeSingle();
   document.getElementById("admin-username").value = profile?.username || "";
   document.getElementById("admin-auto-logout").value = String(profile?.auto_logout_minutes ?? 30);
 
