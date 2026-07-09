@@ -14,3 +14,7 @@ Thumbs.db
 
 # Supabase CLI local files (if you use it later)
 .supabase/
+
+# Claude Code files (not shared with the team/repo)
+.claude/
+CLAUDE.md

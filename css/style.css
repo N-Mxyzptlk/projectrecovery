@@ -436,6 +436,24 @@ input[type="number"] {
   border-color: var(--text-muted);
 }
 
+.view-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-clear-all {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.35);
+  font-size: 12px;
+}
+
+.btn-clear-all:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(248, 113, 113, 0.08);
+}
+
 /* ============================================
    Stat cards
    ============================================ */
@@ -482,6 +500,7 @@ input[type="number"] {
 .quick-action-btn {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
   border-radius: 12px;
   padding: 18px 16px;
   text-align: left;
@@ -497,17 +516,18 @@ input[type="number"] {
   transform: translateY(2px);
 }
 
-.quick-action-btn .icon {
-  font-size: 22px;
-  margin-bottom: 10px;
-}
-
 .quick-action-btn .label {
   font-family: var(--font-display);
   font-size: 15px;
   letter-spacing: 0.03em;
   color: var(--text);
 }
+
+/* Color-coded left edge per action, in place of an icon */
+.quick-action-btn.qa-accent { border-left-color: var(--accent); }
+.quick-action-btn.qa-gold { border-left-color: var(--gold); }
+.quick-action-btn.qa-energy { border-left-color: var(--energy); }
+.quick-action-btn.qa-success { border-left-color: var(--success); }
 
 /* ============================================
    Station progress (merged from Statistics)
@@ -566,6 +586,19 @@ input[type="number"] {
 .trend-badge.same {
   background: var(--accent-dim);
   color: var(--accent);
+}
+
+.trend-badge.abandoned {
+  background: rgba(139, 139, 158, 0.15);
+  color: var(--text-muted);
+}
+
+.station-stat-card.abandoned {
+  opacity: 0.6;
+}
+
+.station-stat-card.abandoned:hover {
+  opacity: 0.9;
 }
 
 .station-stat-card .meta-line {
@@ -642,17 +675,70 @@ input[type="number"] {
   gap: 8px;
 }
 
+.row-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.row-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.bulk-select-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.bulk-select-all input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#workouts-selected-count {
+  flex: 1;
+}
+
+#workouts-delete-selected-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .icon-btn {
   background: none;
   border: 1px solid var(--border);
   color: var(--text-muted);
   border-radius: 6px;
-  width: 30px;
+  width: auto;
+  min-width: 30px;
   height: 30px;
-  font-size: 13px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
 }
 
 .icon-btn:hover {
@@ -660,9 +746,15 @@ input[type="number"] {
   border-color: var(--text-muted);
 }
 
+.icon-btn.danger {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
 .icon-btn.danger:hover {
   color: var(--danger);
   border-color: var(--danger);
+  background: rgba(248, 113, 113, 0.08);
 }
 
 .empty-state {
@@ -717,38 +809,6 @@ input[type="number"] {
 }
 
 .modal-actions button {
-  flex: 1;
-}
-
-.field-row {
-  display: flex;
-  gap: 12px;
-}
-
-.field-row .field {
-  flex: 1;
-}
-
-/* Routine builder: station chip list */
-.routine-station-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 10px;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.routine-station-item select,
-.routine-station-item input {
-  padding: 6px 8px;
-  font-size: 12px;
-}
-
-.routine-station-item .station-name {
   flex: 1;
 }
 

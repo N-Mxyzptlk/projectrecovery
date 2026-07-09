@@ -2,7 +2,15 @@
 // Initializes the Supabase client and exposes small auth helpers.
 // Loaded after config.js and the Supabase CDN script, before app-specific JS.
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// persistSession is off entirely — the auth token lives only in memory for
+// this tab. Closing the tab OR reloading the page both require signing in
+// again. Stricter than the sessionStorage compromise: nothing sits in
+// browser storage for an XSS/shared-device scenario to read.
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: false,
+  },
+});
 
 /**
  * Resolves with the current session, or null if not logged in.
@@ -178,7 +186,8 @@ function refreshStatusLights() {
   }
 
   // Update whichever status elements currently exist in the DOM (desktop
-  // sidebar and/or mobile settings sheet) — either, both, or neither.
+  // sidebar, mobile settings sheet, and/or the mobile active-session
+  // topbar) — any combination, or none.
   [
     ["status-dot", "status-text"],
     ["m-status-dot", "m-status-text"],
@@ -188,6 +197,16 @@ function refreshStatusLights() {
     if (dot) dot.className = "status-dot status-" + status;
     if (text) text.textContent = label;
   });
+
+  // Session-bar dot: same color logic, but it lives inline next to the
+  // timer with no room for label text, so the state is conveyed via
+  // title/aria-label instead of a visible string.
+  const sessionDot = document.getElementById("m-session-status-dot");
+  if (sessionDot) {
+    sessionDot.className = "status-dot m-session-status-dot status-" + status;
+    sessionDot.title = label;
+    sessionDot.setAttribute("aria-label", label);
+  }
 }
 
 /**

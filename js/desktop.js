@@ -1,7 +1,8 @@
 // desktop.js
-// All desktop dashboard behaviour: navigation, CRUD for stations/routines/
-// workouts, and the statistics view. Called once the user is authenticated
-// and the device gate (in index.html) has decided this is a desktop session.
+// All desktop dashboard behaviour: navigation, CRUD for stations,
+// view/manage for workouts, and the statistics view. Called once the user
+// is authenticated and the device gate (in index.html) has decided this is
+// a desktop session.
 
 let currentUserId = null;
 let stationsCache = [];   // refreshed on load, reused by routine/workout forms
@@ -15,8 +16,9 @@ function initDesktopApp(session) {
   document.getElementById("logout-btn").addEventListener("click", signOut);
 
   document.getElementById("add-station-btn").addEventListener("click", () => openStationModal());
-  document.getElementById("add-routine-btn").addEventListener("click", () => openRoutineModal());
-  document.getElementById("add-workout-btn").addEventListener("click", () => openStartWorkoutModal());
+  document.getElementById("clear-all-workouts-btn").addEventListener("click", clearAllWorkouts);
+  document.getElementById("workouts-select-all").addEventListener("change", (e) => toggleSelectAllWorkouts(e.target.checked));
+  document.getElementById("workouts-delete-selected-btn").addEventListener("click", deleteSelectedWorkouts);
 
   document.getElementById("last-deployed-text").textContent = LAST_DEPLOYED;
   runConnectivityCheck();
@@ -51,7 +53,6 @@ function switchView(viewName) {
 
   if (viewName === "dashboard") loadDashboard();
   if (viewName === "stations") loadStations();
-  if (viewName === "routines") loadRoutines();
   if (viewName === "workouts") loadWorkouts();
   if (viewName === "admin") loadAdmin();
 }
@@ -91,26 +92,14 @@ async function loadDashboard() {
 function renderQuickActions() {
   const box = document.getElementById("dashboard-quick-actions");
   box.innerHTML = `
-    <button class="quick-action-btn" id="qa-start-workout">
-      <div class="icon">▣</div>
-      <div class="label">Start Workout</div>
-    </button>
-    <button class="quick-action-btn" id="qa-new-station">
-      <div class="icon">■</div>
+    <button class="quick-action-btn qa-gold" id="qa-new-station">
       <div class="label">New Station</div>
     </button>
-    <button class="quick-action-btn" id="qa-new-routine">
-      <div class="icon">▤</div>
-      <div class="label">New Routine</div>
-    </button>
-    <button class="quick-action-btn" id="qa-export">
-      <div class="icon">⬇</div>
+    <button class="quick-action-btn qa-success" id="qa-export">
       <div class="label">Export Data</div>
     </button>
   `;
-  document.getElementById("qa-start-workout").addEventListener("click", () => openStartWorkoutModal());
   document.getElementById("qa-new-station").addEventListener("click", () => openStationModal());
-  document.getElementById("qa-new-routine").addEventListener("click", () => openRoutineModal());
   document.getElementById("qa-export").addEventListener("click", () => {
     if (typeof exportAllData === "function") exportAllData();
   });
@@ -133,7 +122,7 @@ async function loadRecentWorkouts() {
   }
 
   if (!workouts || workouts.length === 0) {
-    recentBox.innerHTML = `<div class="empty-state"><div class="big">No workouts yet</div><p>Start one to see it here.</p></div>`;
+    recentBox.innerHTML = `<div class="empty-state"><div class="big">No workouts yet</div><p>Log one on your phone to see it here.</p></div>`;
     return;
   }
 
@@ -159,6 +148,14 @@ function chartBaseOptions() {
       y: { grid: { color: "#2a2a38" }, ticks: { color: "#8b8b9e" } },
     },
   };
+}
+
+function formatRelativeDays(days) {
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.round(days / 30)}mo ago`;
+  return `${Math.round(days / 365)}y ago`;
 }
 
 /* ============================================
@@ -206,10 +203,16 @@ async function loadStationStats() {
   Object.values(stationStatCharts).forEach((chart) => chart.destroy());
   stationStatCharts = {};
 
+  const ABANDONED_DAYS = 60; // no session in 2 months reads as "stopped", not "plateaued"
+
   box.innerHTML = entries
     .map(([stationId, data]) => {
       const sessions = data.sessions;
       const timesLogged = sessions.length;
+      const lastDate = new Date(sessions[sessions.length - 1].date);
+      const daysSince = Math.floor((Date.now() - lastDate) / 86400000);
+      const isAbandoned = daysSince >= ABANDONED_DAYS;
+
       let trendClass = "same";
       let trendLabel = "First session";
       if (sessions.length >= 2) {
@@ -227,13 +230,21 @@ async function loadStationStats() {
         }
       }
 
+      // Abandoned overrides the up/down/same trend read — "you got stronger
+      // last time you did this" is misleading framing for a station you
+      // haven't touched in 2 months.
+      if (isAbandoned) {
+        trendClass = "abandoned";
+        trendLabel = timesLogged === 1 ? "Not repeated" : "Inactive";
+      }
+
       return `
-        <div class="station-stat-card">
+        <div class="station-stat-card ${isAbandoned ? "abandoned" : ""}">
           <div class="header-row">
             <div class="station-name">${escapeHtml(data.name)}</div>
             <div class="trend-badge ${trendClass}">${trendLabel}</div>
           </div>
-          <div class="meta-line">Logged ${timesLogged} time${timesLogged === 1 ? "" : "s"}</div>
+          <div class="meta-line">Logged ${timesLogged} time${timesLogged === 1 ? "" : "s"} · Last ${formatRelativeDays(daysSince)}</div>
           <canvas id="station-chart-${stationId}" height="90"></canvas>
         </div>
       `;
@@ -300,8 +311,8 @@ async function loadStations() {
         </div>
       </div>
       <div class="row-actions">
-        <button class="icon-btn" onclick="openStationModal('${s.id}')" title="Edit">✎</button>
-        <button class="icon-btn danger" onclick="deleteStation('${s.id}')" title="Delete">✕</button>
+        <button class="icon-btn" onclick="openStationModal('${s.id}')">Edit</button>
+        <button class="icon-btn danger" onclick="deleteStation('${s.id}')">Delete</button>
       </div>
     </div>`
     )
@@ -358,183 +369,17 @@ async function deleteStation(stationId) {
 }
 
 /* ============================================
-   ROUTINES
+   WORKOUTS — desktop is view/manage only. Starting a workout and logging
+   sets happens on the phone (that's the whole point of the mobile logging
+   flow); desktop's job is reviewing and cleaning up what's already there.
    ============================================ */
-async function loadRoutines() {
-  const listEl = document.getElementById("routines-list");
-  listEl.innerHTML = `<div class="empty-state">Loading...</div>`;
+let workoutsCache = [];
+let selectedWorkoutIds = new Set();
 
-  const { data, error } = await supabaseClient
-    .from("routines")
-    .select("*, routine_stations(*, stations(name))")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(error);
-    listEl.innerHTML = `<div class="empty-state">Error loading routines</div>`;
-    return;
-  }
-
-  if (data.length === 0) {
-    listEl.innerHTML = `
-      <div class="empty-state">
-        <div class="big">No routines yet</div>
-        <p>Group stations into a reusable template, like "Push Day".</p>
-        <button class="btn-accent" onclick="openRoutineModal()">+ New routine</button>
-      </div>`;
-    return;
-  }
-
-  listEl.innerHTML = data
-    .map((r) => {
-      const stationNames = r.routine_stations
-        .sort((a, b) => a.sort_order - b.sort_order)
-        .map((rs) => escapeHtml(rs.stations.name))
-        .join(", ");
-      return `
-      <div class="card-row">
-        <div>
-          <div class="title">${escapeHtml(r.name)}</div>
-          <div class="meta">${stationNames || "No stations added"}</div>
-        </div>
-        <div class="row-actions">
-          <button class="icon-btn" onclick="openRoutineModal('${r.id}')" title="Edit">✎</button>
-          <button class="icon-btn danger" onclick="deleteRoutine('${r.id}')" title="Delete">✕</button>
-        </div>
-      </div>`;
-    })
-    .join("");
-}
-
-async function openRoutineModal(routineId) {
-  if (stationsCache.length === 0) {
-    const { data } = await supabaseClient.from("stations").select("*").order("name");
-    stationsCache = data || [];
-  }
-
-  if (stationsCache.length === 0) {
-    alert("Add at least one station first, then build a routine from it.");
-    return;
-  }
-
-  let existing = null;
-  let existingLinks = [];
-  if (routineId) {
-    const { data } = await supabaseClient
-      .from("routines")
-      .select("*, routine_stations(*)")
-      .eq("id", routineId)
-      .single();
-    existing = data;
-    existingLinks = (data.routine_stations || []).sort((a, b) => a.sort_order - b.sort_order);
-  }
-
-  openModal(`
-    <h3>${existing ? "Edit routine" : "New routine"}</h3>
-    <form id="routine-form">
-      <div class="field">
-        <label>Name</label>
-        <input type="text" id="routine-name" required value="${existing ? escapeHtml(existing.name) : ""}" />
-      </div>
-      <div class="field">
-        <label>Description</label>
-        <input type="text" id="routine-description" value="${existing ? escapeHtml(existing.description) : ""}" />
-      </div>
-      <div class="field">
-        <label>Stations</label>
-        <div id="routine-stations-editor"></div>
-        <button type="button" class="btn-ghost" id="routine-add-station-row" style="width:100%;margin-top:6px;">+ Add station</button>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn-accent">Save</button>
-      </div>
-    </form>
-  `);
-
-  const editor = document.getElementById("routine-stations-editor");
-
-  function addStationRow(prefill) {
-    const rowId = "row-" + Math.random().toString(36).slice(2, 9);
-    const row = document.createElement("div");
-    row.className = "routine-station-item";
-    row.id = rowId;
-    row.innerHTML = `
-      <select class="rs-station station-name">
-        ${stationsCache.map((s) => `<option value="${s.id}" ${prefill && prefill.station_id === s.id ? "selected" : ""}>${escapeHtml(s.name)}</option>`).join("")}
-      </select>
-      <input type="number" class="rs-sets" placeholder="sets" style="width:60px" value="${prefill ? prefill.target_sets ?? "" : ""}" />
-      <input type="number" class="rs-reps" placeholder="reps" style="width:60px" value="${prefill ? prefill.target_reps ?? "" : ""}" />
-      <button type="button" class="icon-btn danger" onclick="document.getElementById('${rowId}').remove()">✕</button>
-    `;
-    editor.appendChild(row);
-  }
-
-  if (existingLinks.length > 0) {
-    existingLinks.forEach((link) => addStationRow(link));
-  } else {
-    addStationRow();
-  }
-
-  document.getElementById("routine-add-station-row").addEventListener("click", () => addStationRow());
-
-  document.getElementById("routine-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const name = document.getElementById("routine-name").value.trim();
-    const description = document.getElementById("routine-description").value.trim() || null;
-
-    const rows = Array.from(editor.querySelectorAll(".routine-station-item")).map((row, idx) => ({
-      station_id: row.querySelector(".rs-station").value,
-      target_sets: row.querySelector(".rs-sets").value || null,
-      target_reps: row.querySelector(".rs-reps").value || null,
-      sort_order: idx,
-    }));
-
-    let routineIdToUse = existing ? existing.id : null;
-
-    if (existing) {
-      const { error } = await supabaseClient
-        .from("routines")
-        .update({ name, description })
-        .eq("id", existing.id);
-      if (error) return alert("Failed to update routine: " + error.message);
-
-      await supabaseClient.from("routine_stations").delete().eq("routine_id", existing.id);
-    } else {
-      const { data, error } = await supabaseClient
-        .from("routines")
-        .insert({ name, description })
-        .select()
-        .single();
-      if (error) return alert("Failed to create routine: " + error.message);
-      routineIdToUse = data.id;
-    }
-
-    const linkRows = rows.map((r) => ({ ...r, routine_id: routineIdToUse }));
-    const { error: linkError } = await supabaseClient.from("routine_stations").insert(linkRows);
-    if (linkError) return alert("Failed to save routine stations: " + linkError.message);
-
-    closeModal();
-    loadRoutines();
-  });
-}
-
-async function deleteRoutine(routineId) {
-  if (!confirm("Delete this routine? This cannot be undone.")) return;
-  const { error } = await supabaseClient.from("routines").delete().eq("id", routineId);
-  if (error) {
-    alert("Failed to delete: " + error.message);
-    return;
-  }
-  loadRoutines();
-}
-
-/* ============================================
-   WORKOUTS
-   ============================================ */
 async function loadWorkouts() {
   const listEl = document.getElementById("workouts-list");
   listEl.innerHTML = `<div class="empty-state">Loading...</div>`;
+  selectedWorkoutIds = new Set();
 
   const { data, error } = await supabaseClient
     .from("workouts")
@@ -545,16 +390,19 @@ async function loadWorkouts() {
   if (error) {
     console.error(error);
     listEl.innerHTML = `<div class="empty-state">Error loading workouts</div>`;
+    renderWorkoutsBulkBar();
     return;
   }
+
+  workoutsCache = data;
 
   if (data.length === 0) {
     listEl.innerHTML = `
       <div class="empty-state">
         <div class="big">No workouts logged</div>
-        <p>Start one, or log sets from your phone at the gym.</p>
-        <button class="btn-accent" onclick="openStartWorkoutModal()">+ Start workout</button>
+        <p>Start one and log sets from your phone at the gym.</p>
       </div>`;
+    renderWorkoutsBulkBar();
     return;
   }
 
@@ -563,59 +411,73 @@ async function loadWorkouts() {
       const volume = w.workout_sets.reduce((s, set) => s + set.reps * (set.weight || 0), 0);
       return `
       <div class="card-row">
-        <div>
-          <div class="title">${escapeHtml(w.name || "Workout")}</div>
-          <div class="meta">${new Date(w.started_at).toLocaleString()} · ${w.workout_sets.length} sets · ${Math.round(volume)}kg volume</div>
+        <div class="row-left">
+          <label class="row-checkbox">
+            <input type="checkbox" class="workout-select" data-id="${w.id}" />
+          </label>
+          <div>
+            <div class="title">${escapeHtml(w.name || "Workout")}</div>
+            <div class="meta">${new Date(w.started_at).toLocaleString()} · ${w.workout_sets.length} sets · ${Math.round(volume)}kg volume</div>
+          </div>
         </div>
         <div class="row-actions">
-          <button class="icon-btn" onclick="openWorkoutDetail('${w.id}')" title="View / add sets">▤</button>
-          <button class="icon-btn danger" onclick="deleteWorkout('${w.id}')" title="Delete">✕</button>
+          <button class="icon-btn" onclick="openWorkoutDetail('${w.id}')">View</button>
+          <button class="icon-btn danger" onclick="deleteWorkout('${w.id}')">Delete</button>
         </div>
       </div>`;
     })
     .join("");
+
+  listEl.querySelectorAll(".workout-select").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) selectedWorkoutIds.add(cb.dataset.id);
+      else selectedWorkoutIds.delete(cb.dataset.id);
+      renderWorkoutsBulkBar();
+    });
+  });
+
+  renderWorkoutsBulkBar();
 }
 
-async function openStartWorkoutModal() {
-  const { data: routines } = await supabaseClient.from("routines").select("id, name").order("name");
+function renderWorkoutsBulkBar() {
+  const bar = document.getElementById("workouts-bulk-bar");
+  const selectAll = document.getElementById("workouts-select-all");
+  const countEl = document.getElementById("workouts-selected-count");
+  const deleteBtn = document.getElementById("workouts-delete-selected-btn");
 
-  openModal(`
-    <h3>Start workout</h3>
-    <form id="start-workout-form">
-      <div class="field">
-        <label>Name (optional)</label>
-        <input type="text" id="workout-name" placeholder="e.g. Push Day" />
-      </div>
-      <div class="field">
-        <label>Based on routine (optional)</label>
-        <select id="workout-routine">
-          <option value="">— none —</option>
-          ${(routines || []).map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join("")}
-        </select>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn-accent">Start</button>
-      </div>
-    </form>
-  `);
+  const total = workoutsCache.length;
+  const selected = selectedWorkoutIds.size;
 
-  document.getElementById("start-workout-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const name = document.getElementById("workout-name").value.trim() || null;
-    const routineId = document.getElementById("workout-routine").value || null;
+  bar.classList.toggle("hidden", total === 0);
+  countEl.textContent = selected > 0 ? `${selected} selected` : "";
+  deleteBtn.disabled = selected === 0;
+  selectAll.checked = total > 0 && selected === total;
+  selectAll.indeterminate = selected > 0 && selected < total;
+}
 
-    const { data, error } = await supabaseClient
-      .from("workouts")
-      .insert({ name, routine_id: routineId, started_at: new Date().toISOString() })
-      .select()
-      .single();
-
-    if (error) return alert("Failed to start workout: " + error.message);
-    closeModal();
-    loadWorkouts();
-    openWorkoutDetail(data.id);
+function toggleSelectAllWorkouts(checked) {
+  selectedWorkoutIds = checked ? new Set(workoutsCache.map((w) => w.id)) : new Set();
+  document.querySelectorAll(".workout-select").forEach((cb) => {
+    cb.checked = selectedWorkoutIds.has(cb.dataset.id);
   });
+  renderWorkoutsBulkBar();
+}
+
+async function deleteSelectedWorkouts() {
+  const ids = [...selectedWorkoutIds];
+  if (ids.length === 0) return;
+  if (!confirm(`Delete ${ids.length} selected workout${ids.length === 1 ? "" : "s"} and all their logged sets?`)) return;
+
+  const btn = document.getElementById("workouts-delete-selected-btn");
+  btn.disabled = true;
+  btn.textContent = "Deleting...";
+
+  const { error } = await supabaseClient.from("workouts").delete().in("id", ids);
+
+  btn.textContent = "Delete Selected";
+
+  if (error) return alert("Failed to delete: " + error.message);
+  loadWorkouts();
 }
 
 async function openWorkoutDetail(workoutId) {
@@ -627,11 +489,6 @@ async function openWorkoutDetail(workoutId) {
 
   if (error) return alert("Failed to load workout: " + error.message);
 
-  if (stationsCache.length === 0) {
-    const { data } = await supabaseClient.from("stations").select("*").order("name");
-    stationsCache = data || [];
-  }
-
   const setsHtml = workout.workout_sets
     .sort((a, b) => a.set_number - b.set_number)
     .map(
@@ -641,68 +498,24 @@ async function openWorkoutDetail(workoutId) {
           <div class="title">${escapeHtml(s.stations.name)} — set ${s.set_number}</div>
           <div class="meta">${s.reps} reps${s.weight ? ` @ ${s.weight}${s.weight_unit}` : ""}</div>
         </div>
-        <button class="icon-btn danger" onclick="deleteSet('${s.id}', '${workoutId}')" title="Delete set">✕</button>
+        <button class="icon-btn danger" onclick="deleteSet('${s.id}', '${workoutId}')">Delete</button>
       </div>`
     )
     .join("");
 
   openModal(`
     <h3>${escapeHtml(workout.name || "Workout")} — ${new Date(workout.started_at).toLocaleDateString()}</h3>
-    <div style="max-height:240px;overflow-y:auto;margin-bottom:16px;">
+    <div style="max-height:320px;overflow-y:auto;margin-bottom:16px;">
       ${setsHtml || '<div class="empty-state" style="padding:20px;">No sets logged yet</div>'}
     </div>
-    <h3 style="font-size:13px;color:var(--text-muted);">Add set</h3>
-    <form id="add-set-form">
-      <div class="field">
-        <label>Station</label>
-        <select id="set-station" required>
-          ${stationsCache.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("")}
-        </select>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Reps</label>
-          <input type="number" id="set-reps" required min="1" />
-        </div>
-        <div class="field">
-          <label>Weight (kg)</label>
-          <input type="number" id="set-weight" step="0.5" min="0" />
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn-ghost" onclick="closeModal()">Close</button>
-        <button type="submit" class="btn-accent">Add set</button>
-      </div>
-    </form>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" onclick="closeModal()">Close</button>
+    </div>
   `);
-
-  document.getElementById("add-set-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const stationId = document.getElementById("set-station").value;
-    const reps = parseInt(document.getElementById("set-reps").value, 10);
-    const weight = document.getElementById("set-weight").value
-      ? parseFloat(document.getElementById("set-weight").value)
-      : null;
-
-    const setsForStation = workout.workout_sets.filter((s) => s.station_id === stationId);
-    const nextSetNumber = setsForStation.length + 1;
-
-    const { error: insertError } = await supabaseClient.from("workout_sets").insert({
-      workout_id: workoutId,
-      station_id: stationId,
-      set_number: nextSetNumber,
-      reps,
-      weight,
-      client_uuid: crypto.randomUUID(),
-    });
-
-    if (insertError) return alert("Failed to add set: " + insertError.message);
-    loadWorkouts();
-    openWorkoutDetail(workoutId); // refresh modal with new set
-  });
 }
 
 async function deleteSet(setId, workoutId) {
+  if (!confirm("Delete this set?")) return;
   const { error } = await supabaseClient.from("workout_sets").delete().eq("id", setId);
   if (error) return alert("Failed to delete set: " + error.message);
   loadWorkouts();
@@ -713,5 +526,23 @@ async function deleteWorkout(workoutId) {
   if (!confirm("Delete this workout and all its logged sets?")) return;
   const { error } = await supabaseClient.from("workouts").delete().eq("id", workoutId);
   if (error) return alert("Failed to delete: " + error.message);
+  loadWorkouts();
+}
+
+/** Small, destructive shortcut living on the Workouts view itself (Admin's
+ *  Danger Zone has the same underlying wipe — this just saves the trip). */
+async function clearAllWorkouts() {
+  if (!confirm("Delete ALL workouts and every logged set? This cannot be undone.")) return;
+
+  const btn = document.getElementById("clear-all-workouts-btn");
+  btn.disabled = true;
+  btn.textContent = "Clearing...";
+
+  const { error } = await supabaseClient.from("workouts").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+
+  btn.disabled = false;
+  btn.textContent = "Clear All";
+
+  if (error) return alert("Failed to clear: " + error.message);
   loadWorkouts();
 }

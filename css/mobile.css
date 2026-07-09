@@ -62,13 +62,18 @@
 }
 
 .m-fab {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
+  height: 40px;
+  min-width: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
   background: var(--surface-raised);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -80,7 +85,6 @@
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent);
-  font-weight: 700;
 }
 
 /* Collapsed: only the toggle handle shows, others are hidden + tucked
@@ -144,6 +148,10 @@
   text-overflow: ellipsis;
 }
 
+.m-session-status-dot {
+  flex-shrink: 0;
+}
+
 .m-session-timer {
   font-size: 13px;
   color: var(--text-muted);
@@ -169,6 +177,17 @@
   color: #fff;
 }
 
+.m-delete-session-btn {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.m-delete-session-btn:active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 /* ============================================
    Journal top bar — date selector
    ============================================ */
@@ -180,13 +199,16 @@
 }
 
 .m-journal-nav-btn {
-  width: 34px;
   height: 34px;
+  padding: 0 12px;
   border-radius: 8px;
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   flex-shrink: 0;
 }
 
@@ -547,8 +569,32 @@
 }
 
 .m-pr-tag {
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.m-pr-tag.success {
+  background: rgba(74, 222, 128, 0.15);
+  color: var(--success);
+}
+
+.m-pr-tag.failure {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--danger);
+}
+
+.m-pr-tag.pending {
+  background: var(--gold-dim);
+  color: var(--gold);
+}
+
+.m-pr-label {
+  color: var(--gold);
+  font-weight: 700;
 }
 
 /* ============================================
@@ -594,8 +640,11 @@
 .m-set-row .edit-btn {
   background: none;
   border: none;
-  color: var(--text-faint);
-  font-size: 14px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   padding: 6px 8px;
 }
 
@@ -606,13 +655,18 @@
 .m-set-row .delete-btn {
   background: none;
   border: none;
-  color: var(--text-faint);
-  font-size: 16px;
-  padding: 6px 10px;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 6px 8px;
 }
 
 .m-set-row .delete-btn:active {
-  color: var(--danger);
+  color: #fff;
+  background: var(--danger);
+  border-radius: 6px;
 }
 
 /* Individual editable sets inside the Journal detail sheet */
@@ -628,8 +682,11 @@
 .m-journal-set-edit-btn {
   background: none;
   border: none;
-  color: var(--text-faint);
-  font-size: 13px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   padding: 4px 8px;
   flex-shrink: 0;
 }

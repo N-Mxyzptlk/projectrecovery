@@ -54,10 +54,10 @@
        child here (the toggle) anchors at the bottom corner, others fan
        upward above it when expanded. -->
   <div id="m-fab-stack" class="m-fab-stack collapsed hidden">
-    <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
-    <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
-    <button class="m-fab" id="m-journal-fab" aria-label="Journal">📖</button>
-    <button class="m-fab" id="m-add-station-fab" aria-label="Add station">➕</button>
+    <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">More</button>
+    <button class="m-fab" id="m-settings-fab" aria-label="Settings">Settings</button>
+    <button class="m-fab" id="m-journal-fab" aria-label="Journal">Journal</button>
+    <button class="m-fab" id="m-add-station-fab" aria-label="Add station">Add Station</button>
   </div>
 
 
@@ -71,11 +71,10 @@
         <div class="tag">desktop dashboard</div>
       </div>
 
-      <div class="nav-item active" data-view="dashboard">◆ Dashboard</div>
-      <div class="nav-item" data-view="stations">■ Stations</div>
-      <div class="nav-item" data-view="routines">▤ Routines</div>
-      <div class="nav-item" data-view="workouts">▣ Workouts</div>
-      <div class="nav-item" data-view="admin">⚙ Admin</div>
+      <div class="nav-item active" data-view="dashboard">Dashboard</div>
+      <div class="nav-item" data-view="stations">Stations</div>
+      <div class="nav-item" data-view="workouts">Workouts</div>
+      <div class="nav-item" data-view="admin">Admin</div>
 
       <div class="sidebar-footer">
         <div class="status-row" id="status-row">
@@ -123,26 +122,24 @@
         <div class="card" id="stations-list"></div>
       </section>
 
-      <!-- ROUTINES VIEW -->
-      <section id="view-routines" class="view hidden">
-        <div class="view-header">
-          <div>
-            <h2>Routines</h2>
-            <div class="subtitle">Reusable workout templates</div>
-          </div>
-          <button class="btn-accent" id="add-routine-btn">+ New routine</button>
-        </div>
-        <div class="card" id="routines-list"></div>
-      </section>
-
       <!-- WORKOUTS VIEW -->
       <section id="view-workouts" class="view hidden">
         <div class="view-header">
           <div>
             <h2>Workouts</h2>
-            <div class="subtitle">Logged sessions</div>
+            <div class="subtitle">Logged sessions — start and log workouts from your phone</div>
           </div>
-          <button class="btn-accent" id="add-workout-btn">+ Start workout</button>
+          <div class="view-header-actions">
+            <button class="btn-ghost btn-clear-all" id="clear-all-workouts-btn">Clear All</button>
+          </div>
+        </div>
+        <div class="bulk-bar hidden" id="workouts-bulk-bar">
+          <label class="bulk-select-all">
+            <input type="checkbox" id="workouts-select-all" />
+            Select all
+          </label>
+          <span id="workouts-selected-count"></span>
+          <button class="icon-btn danger" id="workouts-delete-selected-btn">Delete Selected</button>
         </div>
         <div class="card" id="workouts-list"></div>
       </section>
@@ -207,7 +204,7 @@
               <div class="title">Export everything</div>
               <div class="meta">Downloads a full JSON backup of stations, routines, workouts, and sets.</div>
             </div>
-            <button class="btn-ghost" id="admin-export-btn">⬇ Export JSON</button>
+            <button class="btn-ghost" id="admin-export-btn">Export JSON</button>
           </div>
         </div>
 
@@ -227,6 +224,9 @@
 
   <!-- Modal mount point -->
   <div id="modal-root"></div>
+
+  <!-- Mobile settings sheet mount point -->
+  <div id="m-settings-root"></div>
 
   <!-- ============================================
        Scripts

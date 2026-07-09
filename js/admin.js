@@ -97,7 +97,7 @@ async function changePassword() {
 
 async function loadAdminRowCounts() {
   const el = document.getElementById("admin-row-counts");
-  const tables = ["stations", "routines", "workouts", "workout_sets"];
+  const tables = ["stations", "workouts", "workout_sets"];
 
   try {
     const counts = await Promise.all(
@@ -116,10 +116,8 @@ async function exportAllData() {
   btn.textContent = "Exporting...";
 
   try {
-    const [stations, routines, routineStations, workouts, sets] = await Promise.all([
+    const [stations, workouts, sets] = await Promise.all([
       supabaseClient.from("stations").select("*"),
-      supabaseClient.from("routines").select("*"),
-      supabaseClient.from("routine_stations").select("*"),
       supabaseClient.from("workouts").select("*"),
       supabaseClient.from("workout_sets").select("*"),
     ]);
@@ -127,8 +125,6 @@ async function exportAllData() {
     const backup = {
       exported_at: new Date().toISOString(),
       stations: stations.data || [],
-      routines: routines.data || [],
-      routine_stations: routineStations.data || [],
       workouts: workouts.data || [],
       workout_sets: sets.data || [],
     };
@@ -147,7 +143,7 @@ async function exportAllData() {
   }
 
   btn.disabled = false;
-  btn.textContent = "⬇ Export JSON";
+  btn.textContent = "Export JSON";
 }
 
 async function wipeWorkoutHistory() {

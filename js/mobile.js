@@ -1,7 +1,7 @@
 // mobile.js
 // Mobile is deliberately narrow in scope: start a workout, log sets fast,
-// browse the journal, glance at settings. No creating/editing stations or
-// routines here — that stays on desktop. Reuses `stationsCache` and
+// browse the journal, glance at settings. No creating/editing stations here
+// — that stays on desktop. Reuses `stationsCache` and
 // `currentUserId` from desktop.js (loaded first), `supabaseClient` /
 // `checkConnectivity` / `signOut` from dbclient.js.
 
@@ -130,31 +130,13 @@ function renderStartPrompt() {
     <div class="m-empty">
       <div class="big">No active workout</div>
       <p>Start one to begin logging sets.</p>
-      <select class="m-routine-picker" id="m-routine-select">
-        <option value="">Blank workout</option>
-      </select>
       <button class="m-start-btn" id="m-start-btn">Start Workout</button>
     </div>
   `;
-  loadRoutinesForPicker();
   document.getElementById("m-start-btn").addEventListener("click", startWorkout);
 }
 
-async function loadRoutinesForPicker() {
-  const { data } = await supabaseClient.from("routines").select("id, name").order("name");
-  const select = document.getElementById("m-routine-select");
-  if (select && data) {
-    data.forEach((r) => {
-      const opt = document.createElement("option");
-      opt.value = r.id;
-      opt.textContent = r.name;
-      select.appendChild(opt);
-    });
-  }
-}
-
 async function startWorkout() {
-  const routineId = document.getElementById("m-routine-select").value || null;
   const btn = document.getElementById("m-start-btn");
   btn.disabled = true;
   btn.textContent = "Starting...";
@@ -166,7 +148,6 @@ async function startWorkout() {
   const { data, error } = await supabaseClient
     .from("workouts")
     .insert({
-      routine_id: routineId,
       started_at: new Date().toISOString(),
       name: `Session ${nextSessionNumber}`,
     })
@@ -198,12 +179,14 @@ function renderSessionTopbar() {
         <span class="m-session-pulse"></span>
         <span class="m-session-label">SESSION #${mSessionNumber}</span>
       </div>
+      <span class="status-dot m-session-status-dot" id="m-session-status-dot"></span>
       <div class="m-session-timer" id="m-session-timer">00:00</div>
       <button class="m-finish-btn" id="m-finish-btn">Finish</button>
     </div>
   `;
 
   document.getElementById("m-finish-btn").addEventListener("click", handleFinishClick);
+  refreshStatusLights(); // this is the moment the status light actually matters — show it now, not just in Settings
 
   if (mSessionTimerInterval) clearInterval(mSessionTimerInterval);
   updateSessionTimer();
@@ -273,7 +256,7 @@ function renderActiveSession() {
       </div>
 
       <div class="m-log-actions">
-        <button class="m-pr-toggle ${mIsPRAttemptMode ? "active" : ""}" id="m-pr-toggle" type="button">🎯 PR Attempt</button>
+        <button class="m-pr-toggle ${mIsPRAttemptMode ? "active" : ""}" id="m-pr-toggle" type="button">PR Attempt</button>
         <button class="m-log-btn" id="m-log-set-btn">${mIsPRAttemptMode ? "Log PR Attempt" : "Log Set"}</button>
       </div>
     </div>
@@ -302,9 +285,9 @@ function renderSetList() {
     .map((s) => {
       let prBadge = "";
       if (s.is_pr_attempt) {
-        prBadge = s.pr_result === "success" ? `<span class="m-pr-tag success">🎯 PR ✅</span>`
-          : s.pr_result === "failure" ? `<span class="m-pr-tag failure">🎯 PR ❌</span>`
-          : `<span class="m-pr-tag pending">🎯 PR ⏳</span>`;
+        prBadge = s.pr_result === "success" ? `<span class="m-pr-tag success">ATTEMPT SUCCESS</span>`
+          : s.pr_result === "failure" ? `<span class="m-pr-tag failure">ATTEMPT FAILED</span>`
+          : `<span class="m-pr-tag pending">ATTEMPT PENDING</span>`;
       }
       return `
     <div class="m-set-row">
@@ -313,8 +296,8 @@ function renderSetList() {
         <div class="detail">Set ${s.set_number} · ${s.reps} reps${s.weight ? ` @ ${s.weight}kg` : ""}</div>
       </div>
       <div class="m-set-row-actions">
-        <button class="edit-btn" data-set-id="${s.id}" type="button" aria-label="Edit set">✎</button>
-        <button class="delete-btn" data-set-id="${s.id}" type="button" aria-label="Delete set">✕</button>
+        <button class="edit-btn" data-set-id="${s.id}" type="button">Edit</button>
+        <button class="delete-btn" data-set-id="${s.id}" type="button">Delete</button>
       </div>
     </div>`;
     })
@@ -598,7 +581,7 @@ function renderContinuityCard() {
     <div class="m-continuity-card">
       ${lastLine ? `<div class="m-continuity-row"><span class="k">Last time</span><span class="v">${escapeHtmlMobile(lastLine)}</span></div>` : ""}
       ${lastDate ? `<div class="m-continuity-row"><span class="k">Date</span><span class="v">${new Date(lastDate).toLocaleDateString()}</span></div>` : ""}
-      ${prWeight ? `<div class="m-continuity-row"><span class="k">🏆 PR</span><span class="v">${prWeight}kg</span></div>` : ""}
+      ${prWeight ? `<div class="m-continuity-row"><span class="k m-pr-label">BEST</span><span class="v">${prWeight}kg</span></div>` : ""}
     </div>
   `;
 }
@@ -669,8 +652,8 @@ function renderPRTagPrompt(setId) {
     <div class="m-pr-tag-prompt">
       <div class="label">How'd the PR attempt go?</div>
       <div class="m-pr-tag-buttons">
-        <button class="m-pr-result-btn success" data-result="success">✅ Success</button>
-        <button class="m-pr-result-btn failure" data-result="failure">❌ Failure</button>
+        <button class="m-pr-result-btn success" data-result="success">Success</button>
+        <button class="m-pr-result-btn failure" data-result="failure">Failure</button>
       </div>
     </div>
   `;
@@ -701,7 +684,7 @@ async function markPRResult(setId, result) {
 function showPRBanner(stationName, weight) {
   const banner = document.createElement("div");
   banner.className = "m-pr-banner";
-  banner.innerHTML = `🏆 <strong>NEW PR</strong> — ${escapeHtmlMobile(stationName)} @ ${weight}kg`;
+  banner.innerHTML = `<strong>NEW BEST</strong> — ${escapeHtmlMobile(stationName)} @ ${weight}kg`;
   document.body.appendChild(banner);
 
   requestAnimationFrame(() => banner.classList.add("show"));
@@ -808,12 +791,12 @@ function renderJournalTopbar() {
   const isToday = isSameDay(mJournalDate, new Date());
   document.getElementById("m-topbar").innerHTML = `
     <div class="m-journal-bar">
-      <button class="m-journal-nav-btn" id="m-journal-prev" type="button">◀</button>
+      <button class="m-journal-nav-btn" id="m-journal-prev" type="button">Prev</button>
       <div class="m-journal-date-display" id="m-journal-date-display">
         ${isToday ? "Today" : mJournalDate.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
         <input type="date" id="m-journal-date-input" value="${toDateInputValue(mJournalDate)}" />
       </div>
-      <button class="m-journal-nav-btn" id="m-journal-next" type="button" ${isToday ? "disabled" : ""}>▶</button>
+      <button class="m-journal-nav-btn" id="m-journal-next" type="button" ${isToday ? "disabled" : ""}>Next</button>
     </div>
   `;
 
@@ -900,8 +883,8 @@ function renderJournalWorkoutCard(workout) {
 
   return `
     <div class="m-journal-swipe-wrap" data-workout-id="${workout.id}">
-      <button type="button" class="m-swipe-action-btn m-swipe-action-delete">🗑<br />Delete</button>
-      <button type="button" class="m-swipe-action-btn m-swipe-action-edit">✎<br />Edit</button>
+      <button type="button" class="m-swipe-action-btn m-swipe-action-delete">Delete</button>
+      <button type="button" class="m-swipe-action-btn m-swipe-action-edit">Edit</button>
       <div class="m-journal-card" data-workout-id="${workout.id}">
         <div class="m-journal-card-header">
           <div class="name">${escapeHtmlMobile(workout.name || "Workout")}</div>
@@ -1008,6 +991,23 @@ async function confirmDeleteJournalWorkout(workout) {
   loadJournalDay();
 }
 
+/** Reached from the detail sheet's Delete button — no swipe gesture backs
+ *  this one up, so it needs its own explicit confirmation. */
+async function deleteJournalWorkoutWithConfirm(workout, overlay) {
+  if (!confirm("Delete this workout and all its logged sets? This cannot be undone.")) return;
+
+  beginMutation();
+  const { error } = await supabaseClient.from("workouts").delete().eq("id", workout.id);
+  endMutation();
+
+  if (error) {
+    alert("Failed to delete: " + error.message);
+    return;
+  }
+  overlay.remove();
+  loadJournalDay();
+}
+
 /* ---- Edit sheet: session name + notes ---- */
 function openJournalEditSheet(workout) {
   const overlay = document.createElement("div");
@@ -1075,7 +1075,8 @@ async function openJournalDetailSheet(workout) {
         ${workout.notes ? `<div class="m-stat-block"><div class="label">Notes</div><div class="m-stat-row"><span class="k">${escapeHtmlMobile(workout.notes)}</span></div></div>` : ""}
       </div>
       <div class="m-sheet-footer">
-        <button class="m-start-btn" id="m-detail-edit-btn" style="width:100%;max-width:none;">✎ Edit session</button>
+        <button class="m-start-btn" id="m-detail-edit-btn" style="width:100%;max-width:none;margin-bottom:10px;">Edit session</button>
+        <button class="m-finish-btn m-delete-session-btn" id="m-detail-delete-btn" style="width:100%;padding:12px;">Delete session</button>
       </div>
     </div>
   `;
@@ -1087,6 +1088,7 @@ async function openJournalDetailSheet(workout) {
     overlay.remove();
     openJournalEditSheet(workout);
   });
+  document.getElementById("m-detail-delete-btn").addEventListener("click", () => deleteJournalWorkoutWithConfirm(workout, overlay));
 
   const grouped = {};
   workout.workout_sets
@@ -1118,14 +1120,16 @@ async function openJournalDetailSheet(workout) {
       const setsHtml = group.sets
         .map((s) => {
           let tag = "";
-          if (s.weight && prWeight && s.weight >= prWeight) tag += " 🏆";
+          if (s.weight && prWeight && s.weight >= prWeight) tag += ` <span class="m-pr-label">BEST</span>`;
           if (s.is_pr_attempt) {
-            tag += s.pr_result === "success" ? " 🎯✅" : s.pr_result === "failure" ? " 🎯❌" : " 🎯⏳";
+            tag += s.pr_result === "success" ? ` <span class="m-pr-tag success">ATTEMPT SUCCESS</span>`
+              : s.pr_result === "failure" ? ` <span class="m-pr-tag failure">ATTEMPT FAILED</span>`
+              : ` <span class="m-pr-tag pending">ATTEMPT PENDING</span>`;
           }
           return `
             <div class="m-journal-set-row">
               <span>${s.reps}${s.weight ? `×${s.weight}kg` : ""}${tag}</span>
-              <button type="button" class="m-journal-set-edit-btn" data-set-id="${s.id}" aria-label="Edit set">✎</button>
+              <button type="button" class="m-journal-set-edit-btn" data-set-id="${s.id}">Edit</button>
             </div>`;
         })
         .join("");
@@ -1283,7 +1287,7 @@ function renderSettingsSheetBody(profile, email) {
     </div>
 
     <div class="m-sheet-footer">
-      <button class="m-start-btn" id="m-export-btn" style="width:100%;max-width:none;margin-bottom:10px;">⬇ Export my data</button>
+      <button class="m-start-btn" id="m-export-btn" style="width:100%;max-width:none;margin-bottom:10px;">Export my data</button>
       <button class="m-finish-btn" id="m-signout-btn" style="width:100%;padding:14px;">Sign out</button>
     </div>
   `;
@@ -1375,9 +1379,8 @@ async function exportDataMobile() {
   btn.textContent = "Exporting...";
 
   try {
-    const [stations, routines, workouts, sets] = await Promise.all([
+    const [stations, workouts, sets] = await Promise.all([
       supabaseClient.from("stations").select("*"),
-      supabaseClient.from("routines").select("*"),
       supabaseClient.from("workouts").select("*"),
       supabaseClient.from("workout_sets").select("*"),
     ]);
@@ -1385,7 +1388,6 @@ async function exportDataMobile() {
     const backup = {
       exported_at: new Date().toISOString(),
       stations: stations.data || [],
-      routines: routines.data || [],
       workouts: workouts.data || [],
       workout_sets: sets.data || [],
     };
@@ -1404,7 +1406,7 @@ async function exportDataMobile() {
   }
 
   btn.disabled = false;
-  btn.textContent = "⬇ Export my data";
+  btn.textContent = "Export my data";
 }
 
 /* ============================================
