@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>Workout Tracker</title>
+  <title>NUL Systems</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet" />
@@ -17,7 +17,7 @@
        ============================================ -->
   <div id="login-screen" class="hidden">
     <div class="login-box">
-      <h1>WORKOUT TRACKER</h1>
+      <h1>NUL SYSTEMS</h1>
       <p class="subtitle">Sign in to continue</p>
       <form id="login-form">
         <div class="field">
@@ -45,19 +45,33 @@
     </header>
 
     <main class="m-main" id="m-main">
-      <!-- filled by mobile.js: start prompt, active logging UI, or journal -->
+      <!-- filled by mobile.js: start prompt, active logging UI, or journal
+           (workout app), or the finance log/due screens (finance app) -->
     </main>
   </div>
 
+  <!-- Always-visible edge handle — tap or swipe right from here to open
+       the app-switcher drawer. Hidden on desktop by the device gate. -->
+  <button id="m-drawer-handle" class="m-drawer-handle hidden" aria-label="Switch app">›</button>
+
+  <div id="m-app-drawer-overlay" class="m-app-drawer-overlay hidden">
+    <nav class="m-app-drawer" id="m-app-drawer">
+      <div class="m-drawer-brand">NUL SYSTEMS</div>
+      <div class="m-drawer-app-item" data-app="workout">
+        <div class="m-drawer-app-name">Workout</div>
+      </div>
+      <div class="m-drawer-app-item" data-app="finance">
+        <div class="m-drawer-app-name">Finance</div>
+      </div>
+    </nav>
+  </div>
+
   <!-- Floating action stack — collapsible, thumb-reachable bottom-right.
-       DOM order is reversed on purpose: column-reverse means the first
-       child here (the toggle) anchors at the bottom corner, others fan
+       Contents are fully dynamic (mobile.js renders per-app buttons); the
+       toggle anchors at the bottom corner via column-reverse, others fan
        upward above it when expanded. -->
   <div id="m-fab-stack" class="m-fab-stack collapsed hidden">
-    <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
-    <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
-    <button class="m-fab" id="m-journal-fab" aria-label="Journal">▤</button>
-    <button class="m-fab" id="m-add-station-fab" aria-label="Add station">+</button>
+    <!-- filled by mobile.js: renderFabStack() -->
   </div>
 
 
@@ -67,15 +81,16 @@
   <div id="app-root" class="hidden">
     <nav class="sidebar">
       <div class="sidebar-brand">
-        <div class="name">WORKOUT TRACKER</div>
-        <div class="tag">desktop dashboard</div>
+        <div class="name">NUL SYSTEMS</div>
+        <div class="tag">Control Center</div>
       </div>
 
-      <div class="nav-item active" data-view="dashboard">Dashboard</div>
-      <div class="nav-item" data-view="stations">Stations</div>
-      <div class="nav-item" data-view="progress">Progress</div>
-      <div class="nav-item" data-view="workouts">Workouts</div>
-      <div class="nav-item" data-view="admin">Admin</div>
+      <div class="sidebar-section-label">Apps</div>
+      <div class="nav-item app-nav-item active" data-app="workout">Workout</div>
+      <div class="nav-item app-nav-item" data-app="finance">Finance</div>
+
+      <div class="sidebar-section-label">Account</div>
+      <div class="nav-item app-nav-item" data-app="admin">Admin</div>
 
       <div class="sidebar-footer">
         <div class="status-row" id="status-row">
@@ -89,6 +104,19 @@
     </nav>
 
     <main class="main">
+      <div class="top-tabs" id="top-tabs-workout">
+        <div class="top-tab active" data-view="dashboard">Dashboard</div>
+        <div class="top-tab" data-view="stations">Stations</div>
+        <div class="top-tab" data-view="progress">Progress</div>
+        <div class="top-tab" data-view="workouts">Workouts</div>
+      </div>
+      <div class="top-tabs hidden" id="top-tabs-finance">
+        <div class="top-tab active" data-view="findash">Dashboard</div>
+        <div class="top-tab" data-view="expenses">Expenses</div>
+        <div class="top-tab" data-view="payments">Payments</div>
+      </div>
+
+      <div id="app-views-workout">
       <!-- DASHBOARD VIEW (Statistics merged in below) -->
       <section id="view-dashboard" class="view">
         <div class="view-header">
@@ -99,6 +127,10 @@
         </div>
 
         <div class="quick-actions" id="dashboard-quick-actions">
+          <!-- filled by JS -->
+        </div>
+
+        <div class="stat-grid" id="dashboard-stats">
           <!-- filled by JS -->
         </div>
 
@@ -113,7 +145,17 @@
         <div class="view-header">
           <div>
             <h2>Progress</h2>
-            <div class="subtitle">Per-station weight trend over time</div>
+            <div class="subtitle">
+              Per-station weight trend over time
+              <span class="info-tip">
+                <button type="button" class="info-tip-btn" aria-label="What is 1RM?">i</button>
+                <span class="info-tip-bubble">
+                  <strong>1RM</strong> = one-rep max, the most weight you could lift for a single rep.
+                  Since most sets are logged at higher rep counts, we estimate it with the Epley formula:
+                  <em>weight × (1 + reps ÷ 30)</em>. The dashed line on each chart tracks this estimate over time.
+                </span>
+              </span>
+            </div>
           </div>
         </div>
 
@@ -158,6 +200,71 @@
         </div>
         <div class="card" id="workouts-list"></div>
       </section>
+      </div>
+
+      <div id="app-views-finance" class="hidden">
+        <!-- FINANCE DASHBOARD VIEW -->
+        <section id="view-findash" class="view">
+          <div class="view-header">
+            <div>
+              <h2>Finance</h2>
+              <div class="subtitle">Spending overview</div>
+            </div>
+          </div>
+
+          <div class="quick-actions" id="finance-quick-actions">
+            <!-- filled by JS -->
+          </div>
+
+          <div class="stat-grid" id="finance-stat-tiles">
+            <!-- filled by JS -->
+          </div>
+
+          <div class="finance-charts-grid">
+            <div class="card">
+              <h4 class="admin-section-title">Spend by category</h4>
+              <div class="chart-wrap"><canvas id="finance-category-chart"></canvas></div>
+            </div>
+            <div class="card">
+              <h4 class="admin-section-title">Spend over time</h4>
+              <div class="chart-wrap"><canvas id="finance-trend-chart"></canvas></div>
+            </div>
+            <div class="card">
+              <h4 class="admin-section-title">Upcoming due dates</h4>
+              <div id="finance-calendar"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- EXPENSES VIEW -->
+        <section id="view-expenses" class="view hidden">
+          <div class="view-header">
+            <div>
+              <h2>Expenses</h2>
+              <div class="subtitle">Log spending and manage categories</div>
+            </div>
+            <div class="view-header-actions">
+              <button class="btn-ghost" id="manage-categories-btn">Categories</button>
+              <button class="btn-accent" id="add-expense-btn">+ Log expense</button>
+            </div>
+          </div>
+          <div class="card" id="expenses-list"></div>
+        </section>
+
+        <!-- PAYMENTS VIEW -->
+        <section id="view-payments" class="view hidden">
+          <div class="view-header">
+            <div>
+              <h2>Payments</h2>
+              <div class="subtitle">Subscriptions and upcoming one-time payments</div>
+            </div>
+            <button class="btn-accent" id="add-payment-btn">+ New payment</button>
+          </div>
+          <div id="payments-due-section"></div>
+          <div id="payments-upcoming-section"></div>
+          <div id="payments-history-section"></div>
+        </section>
+      </div>
 
       <!-- ADMIN VIEW -->
       <section id="view-admin" class="view hidden">
@@ -217,7 +324,7 @@
           <div class="card-row" style="border-bottom:none;">
             <div>
               <div class="title">Export everything</div>
-              <div class="meta">Downloads a full JSON backup of stations, routines, workouts, and sets.</div>
+              <div class="meta">Downloads a full JSON backup of stations, workouts, sets, and finance data.</div>
             </div>
             <button class="btn-ghost" id="admin-export-btn">Export JSON</button>
           </div>
@@ -252,6 +359,7 @@
   <script src="js/dbclient.js"></script>
   <script src="js/desktop.js"></script>
   <script src="js/admin.js"></script>
+  <script src="js/finance.js"></script>
   <script src="js/mobile.js"></script>
 
   <script>
@@ -269,11 +377,13 @@
       if (isDesktop()) {
         document.getElementById("mobile-app").classList.add("hidden");
         document.getElementById("m-fab-stack").classList.add("hidden");
+        document.getElementById("m-drawer-handle").classList.add("hidden");
+        document.getElementById("m-app-drawer-overlay").classList.add("hidden");
         requireAuth(initDesktopApp); // defined in desktop.js
       } else {
         document.getElementById("app-root").classList.add("hidden");
-        // FAB stack stays hidden until initMobileApp actually runs post-login —
-        // it must never appear on the login screen.
+        // FAB stack and drawer handle stay hidden until initMobileApp actually
+        // runs post-login — neither must ever appear on the login screen.
         requireAuth(initMobileApp); // defined in mobile.js
       }
     }

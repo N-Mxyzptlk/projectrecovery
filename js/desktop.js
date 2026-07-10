@@ -7,6 +7,19 @@
 let currentUserId = null;
 let stationsCache = [];   // refreshed on load, reused by routine/workout forms
 let stationStatCharts = {}; // keyed by station id, so we can destroy/recreate on reload
+let currentApp = "workout"; // 'workout' | 'finance' | 'admin' — which app the sidebar/top-tabs are pointed at
+
+// Default landing page per app, and the load function each top-tab view maps to.
+const APP_DEFAULT_VIEW = { workout: "dashboard", finance: "findash" };
+const VIEW_LOADERS = {
+  dashboard: loadDashboard,
+  stations: loadStations,
+  progress: loadStationStats,
+  workouts: loadWorkouts,
+  findash: () => loadFinanceDashboard(),
+  expenses: () => loadFinanceExpenses(),
+  payments: () => loadFinancePayments(),
+};
 
 function initDesktopApp(session) {
   currentUserId = session.user.id;
@@ -21,13 +34,15 @@ function initDesktopApp(session) {
   document.getElementById("workouts-select-all").addEventListener("change", (e) => toggleSelectAllWorkouts(e.target.checked));
   document.getElementById("workouts-delete-selected-btn").addEventListener("click", deleteSelectedWorkouts);
 
+  wireFinanceActions(); // defined in finance.js
+
   document.getElementById("last-deployed-text").textContent = LAST_DEPLOYED;
   runConnectivityCheck();
   setInterval(runConnectivityCheck, 60000);
 
   initAutoLogout();
 
-  loadDashboard();
+  switchApp("workout");
 }
 
 async function runConnectivityCheck() {
@@ -35,28 +50,44 @@ async function runConnectivityCheck() {
 }
 
 /* ============================================
-   Navigation
+   Navigation — the sidebar switches between "apps" (Workout / Finance /
+   the app-agnostic Admin); each app's own pages live in a top tab bar.
    ============================================ */
 function setupNav() {
-  const navItems = document.querySelectorAll(".nav-item");
-  navItems.forEach((item) => {
-    item.addEventListener("click", () => {
-      navItems.forEach((i) => i.classList.remove("active"));
-      item.classList.add("active");
-      switchView(item.dataset.view);
-    });
+  document.querySelectorAll(".app-nav-item").forEach((item) => {
+    item.addEventListener("click", () => switchApp(item.dataset.app));
   });
+
+  document.querySelectorAll(".top-tab").forEach((tab) => {
+    tab.addEventListener("click", () => switchView(tab.dataset.view));
+  });
+}
+
+function switchApp(appName) {
+  currentApp = appName;
+
+  document.querySelectorAll(".app-nav-item").forEach((i) => i.classList.toggle("active", i.dataset.app === appName));
+  document.getElementById("top-tabs-workout").classList.toggle("hidden", appName !== "workout");
+  document.getElementById("top-tabs-finance").classList.toggle("hidden", appName !== "finance");
+  document.getElementById("app-views-workout").classList.toggle("hidden", appName !== "workout");
+  document.getElementById("app-views-finance").classList.toggle("hidden", appName !== "finance");
+
+  if (appName === "admin") {
+    document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
+    document.getElementById("view-admin").classList.remove("hidden");
+    return loadAdmin();
+  }
+
+  switchView(APP_DEFAULT_VIEW[appName]);
 }
 
 function switchView(viewName) {
   document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
   document.getElementById(`view-${viewName}`).classList.remove("hidden");
+  document.querySelectorAll(".top-tab").forEach((t) => t.classList.toggle("active", t.dataset.view === viewName));
 
-  if (viewName === "dashboard") return loadDashboard();
-  if (viewName === "stations") return loadStations();
-  if (viewName === "progress") return loadStationStats();
-  if (viewName === "workouts") return loadWorkouts();
-  if (viewName === "admin") return loadAdmin();
+  const loader = VIEW_LOADERS[viewName];
+  if (loader) return loader();
 }
 
 /** Re-fetches whatever view is currently showing, without a page reload —
@@ -67,9 +98,13 @@ async function refreshCurrentView() {
   btn.disabled = true;
   btn.textContent = "Refreshing...";
 
-  const activeNav = document.querySelector(".nav-item.active");
-  const viewName = activeNav ? activeNav.dataset.view : "dashboard";
-  await Promise.all([switchView(viewName), runConnectivityCheck()]);
+  if (currentApp === "admin") {
+    await Promise.all([loadAdmin(), runConnectivityCheck()]);
+  } else {
+    const activeTab = document.querySelector(`#top-tabs-${currentApp} .top-tab.active`);
+    const viewName = activeTab ? activeTab.dataset.view : APP_DEFAULT_VIEW[currentApp];
+    await Promise.all([switchView(viewName), runConnectivityCheck()]);
+  }
 
   btn.disabled = false;
   btn.textContent = "Refresh";
@@ -103,7 +138,100 @@ function escapeHtml(str) {
    ============================================ */
 async function loadDashboard() {
   renderQuickActions();
-  await loadRecentWorkouts();
+  await Promise.all([loadDashboardStats(), loadRecentWorkouts()]);
+}
+
+/** Real signal, not just a mirror of the Workouts list: how much you've
+ *  actually been training and where you're improving, at a glance. Shared
+ *  by the desktop dashboard and the mobile compact dashboard. */
+async function computeWorkoutDashboardStats() {
+  const { data: workouts, error } = await supabaseClient
+    .from("workouts")
+    .select("id, started_at, workout_sets(reps, weight, station_id, stations(name))")
+    .order("started_at", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    return null;
+  }
+
+  const all = workouts || [];
+  const totalWorkouts = all.length;
+
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 86400000);
+  const thisWeekSessions = all.filter((w) => new Date(w.started_at) >= weekAgo).length;
+
+  // Day streak: consecutive calendar days (walking back from today) with
+  // at least one workout — today not having one yet doesn't break a streak
+  // that's still active as of yesterday.
+  const trainedDays = new Set(all.map((w) => new Date(w.started_at).toDateString()));
+  let streak = 0;
+  const cursor = new Date();
+  if (!trainedDays.has(cursor.toDateString())) cursor.setDate(cursor.getDate() - 1);
+  while (trainedDays.has(cursor.toDateString())) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  // Biggest gain: compare each station's last two sessions, only counting
+  // ones still recent enough (30d) to read as "current progress".
+  const byStation = {};
+  all.forEach((w) => {
+    const perStationMax = {};
+    w.workout_sets.forEach((s) => {
+      if (s.weight == null) return;
+      if (!perStationMax[s.station_id] || s.weight > perStationMax[s.station_id].weight) {
+        perStationMax[s.station_id] = { weight: s.weight, name: s.stations.name };
+      }
+    });
+    Object.entries(perStationMax).forEach(([stationId, { weight, name }]) => {
+      if (!byStation[stationId]) byStation[stationId] = { name, sessions: [] };
+      byStation[stationId].sessions.push({ date: w.started_at, weight });
+    });
+  });
+
+  let biggestGain = null;
+  Object.values(byStation).forEach(({ name, sessions }) => {
+    if (sessions.length < 2) return;
+    const last = sessions[sessions.length - 1];
+    const prev = sessions[sessions.length - 2];
+    if ((now - new Date(last.date)) / 86400000 > 30) return;
+    const delta = last.weight - prev.weight;
+    if (delta > 0 && (!biggestGain || delta > biggestGain.delta)) biggestGain = { name, delta };
+  });
+
+  return { totalWorkouts, thisWeekSessions, streak, biggestGain };
+}
+
+async function loadDashboardStats() {
+  const el = document.getElementById("dashboard-stats");
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+
+  const stats = await computeWorkoutDashboardStats();
+  if (!stats) {
+    el.innerHTML = `<div class="empty-state">Error loading stats</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="stat-card">
+      <div class="label">Total workouts</div>
+      <div class="value">${stats.totalWorkouts}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">This week</div>
+      <div class="value">${stats.thisWeekSessions} session${stats.thisWeekSessions === 1 ? "" : "s"}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Day streak</div>
+      <div class="value">${stats.streak}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Biggest gain (30d)</div>
+      <div class="value" style="font-size:19px;">${stats.biggestGain ? `${escapeHtml(stats.biggestGain.name)} +${Math.round(stats.biggestGain.delta * 10) / 10}kg` : "—"}</div>
+    </div>
+  `;
 }
 
 function renderQuickActions() {
@@ -156,10 +284,14 @@ async function loadRecentWorkouts() {
     .join("");
 }
 
-function chartBaseOptions() {
+function chartBaseOptions(tooltipFooter) {
   return {
     responsive: true,
-    plugins: { legend: { display: false } },
+    maintainAspectRatio: false,
+    plugins: {
+      legend: tooltipFooter ? { display: true, labels: { color: "#8b8b9e", boxWidth: 12, font: { size: 11 } } } : { display: false },
+      tooltip: tooltipFooter ? { callbacks: { footer: (items) => tooltipFooter(items[0].dataIndex) } } : {},
+    },
     scales: {
       x: { grid: { color: "#2a2a38" }, ticks: { color: "#8b8b9e" } },
       y: { grid: { color: "#2a2a38" }, ticks: { color: "#8b8b9e" } },
@@ -181,6 +313,10 @@ function formatRelativeDays(days) {
    the actually useful question, not an aggregate volume number.
    ============================================ */
 const ABANDONED_DAYS = 60; // no session in 2 months reads as "stopped", not "plateaued"
+const DENSE_SESSION_THRESHOLD = 10; // beyond this, one-point-per-session no longer fits legibly at card width
+
+let stationStatsCache = {}; // stationId -> decorated entry, so a zoom toggle can re-render one chart without refetching
+let zoomedStations = new Set(); // stationIds currently in "every session" scroll mode (default is the fit-to-width overview)
 
 async function loadStationStats() {
   const box = document.getElementById("dashboard-station-stats");
@@ -190,7 +326,7 @@ async function loadStationStats() {
 
   const { data: workouts, error } = await supabaseClient
     .from("workouts")
-    .select("id, started_at, workout_sets(station_id, weight, stations(name))")
+    .select("id, started_at, workout_sets(station_id, weight, reps, stations(name))")
     .order("started_at", { ascending: true });
 
   if (error) {
@@ -199,19 +335,20 @@ async function loadStationStats() {
     return;
   }
 
-  // stationId -> { name, sessions: [{date, maxWeight}] }
+  // stationId -> { name, sessions: [{date, weight, reps}] } — the heaviest
+  // set of the session represents that session's data point.
   const byStation = {};
   (workouts || []).forEach((w) => {
     const perStationMax = {};
     w.workout_sets.forEach((s) => {
       if (s.weight == null) return; // bodyweight sets don't factor into a weight trend
       if (!perStationMax[s.station_id] || s.weight > perStationMax[s.station_id].weight) {
-        perStationMax[s.station_id] = { weight: s.weight, name: s.stations.name };
+        perStationMax[s.station_id] = { weight: s.weight, reps: s.reps, name: s.stations.name };
       }
     });
-    Object.entries(perStationMax).forEach(([stationId, { weight, name }]) => {
+    Object.entries(perStationMax).forEach(([stationId, { weight, reps, name }]) => {
       if (!byStation[stationId]) byStation[stationId] = { name, sessions: [] };
-      byStation[stationId].sessions.push({ date: w.started_at, weight });
+      byStation[stationId].sessions.push({ date: w.started_at, weight, reps });
     });
   });
 
@@ -228,6 +365,10 @@ async function loadStationStats() {
     const daysSince = Math.floor((Date.now() - new Date(data.sessions[data.sessions.length - 1].date)) / 86400000);
     return { stationId, data, daysSince, isAbandoned: daysSince >= ABANDONED_DAYS };
   });
+
+  stationStatsCache = {};
+  decorated.forEach((e) => (stationStatsCache[e.stationId] = e));
+  zoomedStations = new Set(); // reset on reload — start every card back on the overview
 
   // Abandoned stations are hidden by default — a station you tried once 8
   // months ago and never touched again shouldn't take up the same visual
@@ -249,6 +390,14 @@ async function loadStationStats() {
       toggleBox.innerHTML = "";
     });
   }
+}
+
+// Epley formula — standard estimated-1RM approximation from a weight/reps
+// pair, used so the card can surface strength progress even though every
+// set is logged at whatever rep count was actually done that day.
+function estimate1RM(weight, reps) {
+  if (!reps || reps <= 1) return weight;
+  return weight * (1 + reps / 30);
 }
 
 function renderStationStatCard({ stationId, data, daysSince, isAbandoned }) {
@@ -280,40 +429,143 @@ function renderStationStatCard({ stationId, data, daysSince, isAbandoned }) {
     trendLabel = timesLogged === 1 ? "Not repeated" : "Inactive";
   }
 
+  const bestWeight = Math.max(...sessions.map((s) => s.weight));
+  const best1RM = Math.max(...sessions.map((s) => estimate1RM(s.weight, s.reps)));
+
+  const first = sessions[0];
+  const last = sessions[sessions.length - 1];
+  const changeSinceFirst = last.weight - first.weight;
+  const pctSinceFirst = first.weight ? (changeSinceFirst / first.weight) * 100 : 0;
+  const changeClass = changeSinceFirst > 0 ? "up" : changeSinceFirst < 0 ? "down" : "";
+
+  const spanDays = Math.max(1, (new Date(last.date) - new Date(first.date)) / 86400000);
+  const perMonth = timesLogged / Math.max(1, spanDays / 30);
+
   return `
-    <div class="station-stat-card ${isAbandoned ? "abandoned" : ""}">
+    <div class="station-stat-card ${isAbandoned ? "abandoned" : `trend-${trendClass}`}">
       <div class="header-row">
         <div class="station-name">${escapeHtml(data.name)}</div>
         <div class="trend-badge ${trendClass}">${trendLabel}</div>
       </div>
       <div class="meta-line">Logged ${timesLogged} time${timesLogged === 1 ? "" : "s"} · Last ${formatRelativeDays(daysSince)}</div>
-      <canvas id="station-chart-${stationId}" height="90"></canvas>
+
+      <div class="stat-mini-grid">
+        <div class="stat-mini">
+          <div class="stat-mini-value">${Math.round(bestWeight * 10) / 10}kg</div>
+          <div class="stat-mini-label">Best set</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-value">${Math.round(best1RM * 10) / 10}kg</div>
+          <div class="stat-mini-label">Est. 1RM</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-value ${changeClass}">${changeSinceFirst > 0 ? "+" : ""}${Math.round(changeSinceFirst * 10) / 10}kg</div>
+          <div class="stat-mini-label">Since first (${Math.round(pctSinceFirst)}%)</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-value">${perMonth.toFixed(1)}</div>
+          <div class="stat-mini-label">Sessions / mo</div>
+        </div>
+      </div>
+
+      <div class="chart-wrap" id="chart-wrap-${stationId}">
+        <div class="chart-inner" id="chart-inner-${stationId}"><canvas id="station-chart-${stationId}"></canvas></div>
+      </div>
+      ${timesLogged > DENSE_SESSION_THRESHOLD
+        ? `<div class="chart-footer">
+             <span class="meta-line">${zoomedStations.has(stationId) ? "Scroll to see every session" : "Showing overall trend — zoom in to see individual sessions"}</span>
+             <button type="button" class="btn-ghost chart-zoom-btn" data-station-id="${stationId}">${zoomedStations.has(stationId) ? "Overview" : "Zoom in"}</button>
+           </div>`
+        : ""}
     </div>
   `;
 }
 
+const CHART_PX_PER_SESSION = 46; // fixed point spacing so dense history stays readable instead of squeezing
+
 function renderStationCharts(decoratedEntries) {
-  decoratedEntries.forEach(({ stationId, data }) => {
-    const ctx = document.getElementById(`station-chart-${stationId}`);
-    if (!ctx) return;
-    const chart = new Chart(ctx.getContext("2d"), {
-      type: "line",
-      data: {
-        labels: data.sessions.map((s) => new Date(s.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
-        datasets: [{
+  decoratedEntries.forEach((entry) => {
+    renderOneStationChart(entry);
+    document.querySelector(`.chart-zoom-btn[data-station-id="${entry.stationId}"]`)
+      ?.addEventListener("click", () => toggleStationZoom(entry.stationId));
+  });
+}
+
+// Overview mode (default): the chart fits the card width so the whole
+// history reads as one trend line at a glance — that's the actual point of
+// the Progress page. Zoomed mode: fixed pixel spacing per session in a
+// horizontally-scrolling wrap, for when you want to pick out one day.
+function renderOneStationChart({ stationId, data }) {
+  const ctx = document.getElementById(`station-chart-${stationId}`);
+  if (!ctx) return;
+
+  const inner = document.getElementById(`chart-inner-${stationId}`);
+  const wrap = document.getElementById(`chart-wrap-${stationId}`);
+  const isZoomed = zoomedStations.has(stationId);
+
+  if (inner && wrap) {
+    const neededWidth = data.sessions.length * CHART_PX_PER_SESSION;
+    inner.style.width = isZoomed && neededWidth > wrap.clientWidth ? `${neededWidth}px` : "100%";
+  }
+
+  const dense = data.sessions.length > DENSE_SESSION_THRESHOLD;
+  const reps = data.sessions.map((s) => s.reps);
+
+  if (stationStatCharts[stationId]) stationStatCharts[stationId].destroy();
+
+  const chart = new Chart(ctx.getContext("2d"), {
+    type: "line",
+    data: {
+      labels: data.sessions.map((s) => new Date(s.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
+      datasets: [
+        {
           label: "Weight (kg)",
           data: data.sessions.map((s) => s.weight),
           borderColor: "#6c63ff",
           backgroundColor: "rgba(108,99,255,0.15)",
           fill: true,
           tension: 0.3,
-          pointRadius: 3,
-        }],
-      },
-      options: chartBaseOptions(),
-    });
-    stationStatCharts[stationId] = chart;
+          // Overview mode on a dense history hides point markers so the
+          // line itself (the overall trend) stays legible instead of
+          // turning into a wall of overlapping dots.
+          pointRadius: dense && !isZoomed ? 0 : 4,
+          pointHoverRadius: 6,
+        },
+        {
+          label: "Est. 1RM (kg)",
+          data: data.sessions.map((s) => Math.round(estimate1RM(s.weight, s.reps) * 10) / 10),
+          borderColor: "#f5c542",
+          backgroundColor: "transparent",
+          borderDash: [4, 3],
+          fill: false,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+        },
+      ],
+    },
+    options: chartBaseOptions((i) => `${reps[i] || "?"} reps`),
   });
+  stationStatCharts[stationId] = chart;
+
+  if (wrap && isZoomed) wrap.scrollLeft = wrap.scrollWidth; // land on the most recent sessions by default
+}
+
+function toggleStationZoom(stationId) {
+  const entry = stationStatsCache[stationId];
+  if (!entry) return;
+
+  if (zoomedStations.has(stationId)) zoomedStations.delete(stationId);
+  else zoomedStations.add(stationId);
+
+  const footer = document.querySelector(`.chart-zoom-btn[data-station-id="${stationId}"]`)?.closest(".chart-footer");
+  if (footer) {
+    const isZoomed = zoomedStations.has(stationId);
+    footer.querySelector(".meta-line").textContent = isZoomed ? "Scroll to see every session" : "Showing overall trend — zoom in to see individual sessions";
+    footer.querySelector(".chart-zoom-btn").textContent = isZoomed ? "Overview" : "Zoom in";
+  }
+
+  renderOneStationChart(entry);
 }
 
 /* ============================================
@@ -547,13 +799,19 @@ async function openWorkoutDetail(workoutId) {
   const stationsHtml = Object.values(grouped)
     .map((group) => {
       const setsHtml = group.sets
-        .map(
-          (s) => `
+        .map((s) => {
+          let prBadge = "";
+          if (s.is_pr_attempt) {
+            prBadge = s.pr_result === "success" ? `<span class="wd-pr-tag success">ATTEMPT SUCCESS</span>`
+              : s.pr_result === "failure" ? `<span class="wd-pr-tag failure">ATTEMPT FAILED</span>`
+              : `<span class="wd-pr-tag pending">ATTEMPT PENDING</span>`;
+          }
+          return `
           <div class="wd-set-row">
-            <span class="wd-set-label">Set ${s.set_number} · ${s.reps} reps${s.weight ? ` @ ${s.weight}kg` : ""}</span>
+            <span class="wd-set-label">Set ${s.set_number} · ${s.reps} reps${s.weight ? ` @ ${s.weight}kg` : ""} ${prBadge}</span>
             <button class="icon-btn danger" onclick="deleteSet('${s.id}', '${workoutId}')">Delete</button>
-          </div>`
-        )
+          </div>`;
+        })
         .join("");
       return `
         <div class="wd-station-block">

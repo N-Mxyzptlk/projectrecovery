@@ -97,7 +97,7 @@ async function changePassword() {
 
 async function loadAdminRowCounts() {
   const el = document.getElementById("admin-row-counts");
-  const tables = ["stations", "workouts", "workout_sets"];
+  const tables = ["stations", "workouts", "workout_sets", "finance_categories", "finance_payments", "finance_expenses"];
 
   try {
     const counts = await Promise.all(
@@ -116,10 +116,13 @@ async function exportAllData() {
   btn.textContent = "Exporting...";
 
   try {
-    const [stations, workouts, sets] = await Promise.all([
+    const [stations, workouts, sets, financeCategories, financePayments, financeExpenses] = await Promise.all([
       supabaseClient.from("stations").select("*"),
       supabaseClient.from("workouts").select("*"),
       supabaseClient.from("workout_sets").select("*"),
+      supabaseClient.from("finance_categories").select("*"),
+      supabaseClient.from("finance_payments").select("*"),
+      supabaseClient.from("finance_expenses").select("*"),
     ]);
 
     const backup = {
@@ -127,13 +130,16 @@ async function exportAllData() {
       stations: stations.data || [],
       workouts: workouts.data || [],
       workout_sets: sets.data || [],
+      finance_categories: financeCategories.data || [],
+      finance_payments: financePayments.data || [],
+      finance_expenses: financeExpenses.data || [],
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `workout-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `nul-systems-backup-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();

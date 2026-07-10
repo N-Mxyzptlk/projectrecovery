@@ -879,6 +879,354 @@
 }
 
 /* ============================================
+   Finance app — mobile
+   ============================================ */
+.m-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.m-chip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.m-chip.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.m-chip.more {
+  color: var(--text-faint);
+  border-style: dashed;
+}
+
+.m-amount-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--gold);
+  padding: 14px;
+  font-size: 26px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  text-align: center;
+  appearance: none;
+  -moz-appearance: textfield;
+}
+
+.m-amount-input::-webkit-inner-spin-button,
+.m-amount-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.m-amount-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.m-amount-note {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 12px;
+  font-size: 14px;
+}
+
+.m-amount-note:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.m-payment-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.m-payment-row.status-due-soon {
+  border-left-color: var(--gold);
+}
+
+.m-payment-row.status-overdue {
+  border-left-color: var(--danger);
+}
+
+.m-payment-row.status-upcoming {
+  border-left-color: var(--success);
+}
+
+.m-payment-row.status-paid,
+.m-payment-row.status-cancelled {
+  opacity: 0.55;
+}
+
+.m-payment-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.m-payment-row-top .name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.m-payment-amount {
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--gold);
+}
+
+.m-payment-row .detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.m-payment-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.m-payment-action-btn {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.m-payment-action-btn:disabled {
+  opacity: 0.5;
+}
+
+.m-payment-action-btn.paid:active {
+  background: rgba(74, 222, 128, 0.15);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.m-payment-action-btn.overdue:active {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.m-payment-action-btn.skip:active {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* ============================================
+   Mobile compact dashboards (Workout + Finance)
+   ============================================ */
+.m-dash-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.m-dash-stat-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.m-dash-stat-tile .label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.m-dash-stat-tile .value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+}
+
+.m-dash-stat-tile .value.danger {
+  color: var(--danger);
+}
+
+.m-dash-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.m-dash-quick-action {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.m-dash-quick-action:active {
+  background: var(--surface-hover);
+}
+
+.m-dash-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.m-dash-card-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.m-sheet-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.03em;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.m-payment-sheet-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.m-payment-sheet-amount {
+  font-family: var(--font-display);
+  font-size: 24px;
+  color: var(--gold);
+}
+
+/* ============================================
+   App-switcher drawer — swipe right from the left edge, or tap the
+   always-visible edge handle. Slides in over everything, including
+   bottom sheets, since switching apps is a global nav action.
+   ============================================ */
+.m-drawer-handle {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 60px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 10px 10px 0;
+  color: var(--text-faint);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.35);
+  z-index: 260;
+}
+
+.m-drawer-handle:active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.m-app-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 400;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.m-app-drawer-overlay.open {
+  opacity: 1;
+}
+
+.m-app-drawer {
+  width: 78%;
+  max-width: 300px;
+  height: 100%;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--border);
+  padding: calc(env(safe-area-inset-top, 0px) + 24px) 0 20px;
+  transform: translateX(-100%);
+  transition: transform 0.22s ease;
+}
+
+.m-app-drawer-overlay.open .m-app-drawer {
+  transform: translateX(0);
+}
+
+.m-drawer-brand {
+  padding: 0 20px 18px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+
+.m-drawer-app-item {
+  padding: 14px 20px;
+  border-left: 3px solid transparent;
+}
+
+.m-drawer-app-item.active {
+  border-left-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.m-drawer-app-item:active {
+  background: var(--surface-hover);
+}
+
+.m-drawer-app-name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+/* ============================================
    Bottom sheet (station picker / settings)
    ============================================ */
 .m-sheet-overlay {

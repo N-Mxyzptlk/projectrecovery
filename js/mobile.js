@@ -22,8 +22,10 @@ let mPendingPRSetId = null; // set awaiting a Success/Failure tag
 let mFinishConfirmPending = false;
 let mFinishConfirmTimeout = null;
 
-let mScreen = "log"; // 'log' | 'journal'
+let mScreen = "log"; // 'dashboard' | 'log' | 'journal'
 let mJournalDate = new Date();
+
+let mApp = "workout"; // 'workout' | 'finance' — which app the mobile shell is showing
 
 /* ============================================
    Boot
@@ -32,20 +34,10 @@ function initMobileApp(session) {
   currentUserId = session.user.id;
   document.getElementById("mobile-app").classList.remove("hidden");
   document.getElementById("m-fab-stack").classList.remove("hidden");
+  document.getElementById("m-drawer-handle").classList.remove("hidden");
 
-  document.getElementById("m-fab-toggle").addEventListener("click", toggleFabStack);
-  document.getElementById("m-journal-fab").addEventListener("click", () => {
-    collapseFabStack();
-    toggleJournalScreen();
-  });
-  document.getElementById("m-settings-fab").addEventListener("click", () => {
-    collapseFabStack();
-    openSettingsSheet();
-  });
-  document.getElementById("m-add-station-fab").addEventListener("click", () => {
-    collapseFabStack();
-    openAddStationSheet();
-  });
+  renderFabStack();
+  wireAppDrawer();
 
   loadStationsForMobile().then(loadActiveWorkout);
 
@@ -62,22 +54,223 @@ function collapseFabStack() {
   document.getElementById("m-fab-stack").classList.add("collapsed");
 }
 
+/** FAB contents are per-app: rebuilt on boot and on every app switch,
+ *  rather than static markup, since Workout and Finance need different
+ *  quick actions. The toggle is always first in the DOM so column-reverse
+ *  anchors it at the bottom corner (see index.html's m-fab-stack comment). */
+function renderFabStack() {
+  const stack = document.getElementById("m-fab-stack");
+  stack.innerHTML = mApp === "workout"
+    ? `
+      <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
+      <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
+      <button class="m-fab ${mScreen === "dashboard" ? "active" : ""}" id="m-dashboard-fab" aria-label="Dashboard">▦</button>
+      <button class="m-fab ${mScreen === "journal" ? "active" : ""}" id="m-journal-fab" aria-label="Journal">▤</button>
+      <button class="m-fab" id="m-add-station-fab" aria-label="Add station">+</button>
+    `
+    : `
+      <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
+      <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
+      <button class="m-fab ${fScreen === "dashboard" ? "active" : ""}" id="m-fin-dashboard-fab" aria-label="Dashboard">▦</button>
+      <button class="m-fab ${fScreen === "due" ? "active" : ""}" id="m-payments-due-fab" aria-label="Payments due">▤</button>
+      <button class="m-fab ${fScreen === "log" ? "active" : ""}" id="m-log-expense-fab" aria-label="Log expense">+</button>
+    `;
+
+  document.getElementById("m-fab-toggle").addEventListener("click", toggleFabStack);
+  document.getElementById("m-settings-fab").addEventListener("click", () => {
+    collapseFabStack();
+    openSettingsSheet();
+  });
+
+  if (mApp === "workout") {
+    document.getElementById("m-dashboard-fab").addEventListener("click", () => {
+      collapseFabStack();
+      setWorkoutMobileScreen("dashboard");
+    });
+    document.getElementById("m-journal-fab").addEventListener("click", () => {
+      collapseFabStack();
+      setWorkoutMobileScreen("journal");
+    });
+    document.getElementById("m-add-station-fab").addEventListener("click", () => {
+      collapseFabStack();
+      openAddStationSheet();
+    });
+  } else {
+    document.getElementById("m-fin-dashboard-fab").addEventListener("click", () => {
+      collapseFabStack();
+      setFinanceMobileScreen("dashboard"); // defined in finance.js
+    });
+    document.getElementById("m-payments-due-fab").addEventListener("click", () => {
+      collapseFabStack();
+      setFinanceMobileScreen("due"); // defined in finance.js
+    });
+    document.getElementById("m-log-expense-fab").addEventListener("click", () => {
+      collapseFabStack();
+      setFinanceMobileScreen("log"); // defined in finance.js
+    });
+  }
+}
+
+/* ============================================
+   App-switcher drawer — tap the edge handle, or swipe right from near
+   the left edge, to switch between Workout and Finance.
+   ============================================ */
+function wireAppDrawer() {
+  document.getElementById("m-drawer-handle").addEventListener("click", openAppDrawer);
+  document.getElementById("m-app-drawer-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "m-app-drawer-overlay") closeAppDrawer();
+  });
+  document.querySelectorAll(".m-drawer-app-item").forEach((item) => {
+    item.addEventListener("click", () => switchMobileApp(item.dataset.app));
+  });
+  attachEdgeSwipeDrawer();
+}
+
+function openAppDrawer() {
+  const overlay = document.getElementById("m-app-drawer-overlay");
+  document.querySelectorAll(".m-drawer-app-item").forEach((i) => i.classList.toggle("active", i.dataset.app === mApp));
+  overlay.classList.remove("hidden");
+  requestAnimationFrame(() => overlay.classList.add("open"));
+}
+
+function closeAppDrawer() {
+  const overlay = document.getElementById("m-app-drawer-overlay");
+  overlay.classList.remove("open");
+  setTimeout(() => overlay.classList.add("hidden"), 220); // matches CSS transition duration
+}
+
+function switchMobileApp(appName) {
+  if (appName === mApp) return closeAppDrawer();
+  mApp = appName;
+  closeAppDrawer();
+  renderFabStack();
+
+  if (mApp === "workout") {
+    if (mScreen === "dashboard") renderWorkoutDashboardMobile();
+    else if (mScreen === "journal") renderJournalScreen();
+    else loadActiveWorkout(); // re-check for an active session and re-render
+  } else {
+    initFinanceMobile(); // defined in finance.js
+  }
+}
+
+/** Same delta-x-threshold drag pattern as attachJournalSwipe (below), but
+ *  starting from the screen edge and opening the drawer rather than a card.
+ *  Uses Pointer Events so it works for touch and mouse alike. */
+function attachEdgeSwipeDrawer() {
+  const EDGE_ZONE = 24; // px from the left edge a drag must start within
+  const OPEN_THRESHOLD = 60; // px dragged right before the drawer commits to opening
+  const VERTICAL_CANCEL = 40; // px of vertical drift that cancels it (it's a scroll, not a swipe)
+
+  let startX = null;
+  let startY = null;
+  let active = false;
+
+  const root = document.getElementById("mobile-app");
+
+  root.addEventListener("pointerdown", (e) => {
+    if (e.clientX > EDGE_ZONE) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    active = true;
+  });
+
+  root.addEventListener("pointermove", (e) => {
+    if (!active || startX === null) return;
+    const dx = e.clientX - startX;
+    const dy = Math.abs(e.clientY - startY);
+    if (dy > VERTICAL_CANCEL) {
+      active = false;
+      return;
+    }
+    if (dx > OPEN_THRESHOLD) {
+      active = false;
+      startX = null;
+      openAppDrawer();
+    }
+  });
+
+  const reset = () => {
+    active = false;
+    startX = null;
+  };
+  root.addEventListener("pointerup", reset);
+  root.addEventListener("pointercancel", reset);
+}
+
 async function loadStationsForMobile() {
   if (stationsCache && stationsCache.length > 0) return;
   const { data, error } = await supabaseClient.from("stations").select("*").order("name");
   if (!error) stationsCache = data || [];
 }
 
-function toggleJournalScreen() {
-  mScreen = mScreen === "journal" ? "log" : "journal";
-  document.getElementById("m-journal-fab").classList.toggle("active", mScreen === "journal");
-  if (mScreen === "journal") {
+/** Tapping a screen's FAB while already on that screen returns to the
+ *  default 'log' screen — the same toggle behavior the Journal FAB always
+ *  had, generalized now that there's a third screen (Dashboard). */
+function setWorkoutMobileScreen(target) {
+  mScreen = mScreen === target ? "log" : target;
+  renderFabStack();
+
+  if (mScreen === "dashboard") {
+    renderWorkoutDashboardMobile();
+  } else if (mScreen === "journal") {
     mJournalDate = new Date();
     renderJournalScreen();
   } else {
     if (mCurrentWorkout) renderActiveSession();
     else renderStartPrompt();
   }
+}
+
+/** Compact mirror of the desktop dashboard: same stats, same shared
+ *  computeWorkoutDashboardStats() query, laid out for one thumb. */
+async function renderWorkoutDashboardMobile() {
+  document.getElementById("m-topbar").innerHTML = `
+    <div>
+      <div class="m-title">WORKOUT</div>
+      <div class="m-date">${new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
+    </div>
+  `;
+
+  const main = document.getElementById("m-main");
+  main.innerHTML = `<div class="m-empty" style="padding:40px 0;height:auto;"><p>Loading...</p></div>`;
+
+  const stats = await computeWorkoutDashboardStats(); // defined in desktop.js
+  if (mScreen !== "dashboard") return; // user navigated away while this was loading
+
+  if (!stats) {
+    main.innerHTML = `<div class="m-empty" style="padding:40px 0;height:auto;"><p>Error loading stats.</p></div>`;
+    return;
+  }
+
+  main.innerHTML = `
+    <div class="m-dash-stats-grid">
+      <div class="m-dash-stat-tile">
+        <div class="label">Total workouts</div>
+        <div class="value">${stats.totalWorkouts}</div>
+      </div>
+      <div class="m-dash-stat-tile">
+        <div class="label">This week</div>
+        <div class="value">${stats.thisWeekSessions}</div>
+      </div>
+      <div class="m-dash-stat-tile">
+        <div class="label">Day streak</div>
+        <div class="value">${stats.streak}</div>
+      </div>
+      <div class="m-dash-stat-tile">
+        <div class="label">Biggest gain (30d)</div>
+        <div class="value" style="font-size:15px;">${stats.biggestGain ? `${escapeHtmlMobile(stats.biggestGain.name)} +${Math.round(stats.biggestGain.delta * 10) / 10}kg` : "—"}</div>
+      </div>
+    </div>
+
+    <div class="m-dash-quick-actions">
+      <button type="button" class="m-dash-quick-action" id="m-dash-start-workout">${mCurrentWorkout ? "Continue Workout" : "Start Workout"}</button>
+      <button type="button" class="m-dash-quick-action" id="m-dash-view-journal">View Journal</button>
+    </div>
+  `;
+
+  document.getElementById("m-dash-start-workout").addEventListener("click", () => setWorkoutMobileScreen("log"));
+  document.getElementById("m-dash-view-journal").addEventListener("click", () => setWorkoutMobileScreen("journal"));
 }
 
 /* ============================================
@@ -1474,7 +1667,7 @@ function openAddStationSheet() {
       <div class="m-sheet-body">
         <div class="m-stat-block" style="margin-bottom:14px;">
           <div class="label">New station</div>
-          <input type="text" id="m-new-station-name" placeholder="e.g. Leg Press" autofocus
+          <input type="text" id="m-new-station-name" autofocus
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
                         color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
         </div>

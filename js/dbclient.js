@@ -2,13 +2,14 @@
 // Initializes the Supabase client and exposes small auth helpers.
 // Loaded after config.js and the Supabase CDN script, before app-specific JS.
 
-// persistSession is off entirely — the auth token lives only in memory for
-// this tab. Closing the tab OR reloading the page both require signing in
-// again. Stricter than the sessionStorage compromise: nothing sits in
-// browser storage for an XSS/shared-device scenario to read.
+// Session persists to sessionStorage — survives an in-tab reload (F5) but
+// is wiped the moment the tab/browser closes, and never touches disk.
+// Middle ground: closing the tab still fully signs out (protects a
+// shared-device scenario), but a reload no longer forces a re-login.
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    persistSession: false,
+    persistSession: true,
+    storage: window.sessionStorage,
   },
 });
 
