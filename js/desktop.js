@@ -7,7 +7,7 @@
 let currentUserId = null;
 let stationsCache = [];   // refreshed on load, reused by routine/workout forms
 let stationStatCharts = {}; // keyed by station id, so we can destroy/recreate on reload
-let currentApp = "workout"; // 'workout' | 'finance' | 'admin' — which app the sidebar/top-tabs are pointed at
+let currentApp = "home"; // 'home' | 'workout' | 'finance' | 'admin' — which app the sidebar/top-tabs are pointed at
 
 // Default landing page per app, and the load function each top-tab view maps to.
 const APP_DEFAULT_VIEW = { workout: "dashboard", finance: "findash" };
@@ -42,7 +42,7 @@ function initDesktopApp(session) {
 
   initAutoLogout();
 
-  let restoreApp = "workout";
+  let restoreApp = "home";
   let restoreView = null;
   try {
     const saved = JSON.parse(sessionStorage.getItem("np_lastLocation") || "null");
@@ -58,7 +58,7 @@ function initDesktopApp(session) {
  *  back where the user was instead of resetting to the workout dashboard. */
 function saveLastLocation() {
   try {
-    const view = currentApp === "admin" ? null : document.querySelector(`#top-tabs-${currentApp} .top-tab.active`)?.dataset.view || null;
+    const view = currentApp === "admin" || currentApp === "home" ? null : document.querySelector(`#top-tabs-${currentApp} .top-tab.active`)?.dataset.view || null;
     sessionStorage.setItem("np_lastLocation", JSON.stringify({ app: currentApp, view }));
   } catch {}
 }
@@ -83,18 +83,22 @@ function setupNav() {
 
 function switchApp(appName, viewName) {
   currentApp = appName;
+  if (appName !== "home") stopHomeClock();
 
   document.querySelectorAll(".app-nav-item").forEach((i) => i.classList.toggle("active", i.dataset.app === appName));
   document.getElementById("top-tabs-workout").classList.toggle("hidden", appName !== "workout");
   document.getElementById("top-tabs-finance").classList.toggle("hidden", appName !== "finance");
+  document.getElementById("app-views-home").classList.toggle("hidden", appName !== "home");
   document.getElementById("app-views-workout").classList.toggle("hidden", appName !== "workout");
   document.getElementById("app-views-finance").classList.toggle("hidden", appName !== "finance");
 
-  if (appName === "admin") {
+  if (appName === "admin" || appName === "home") {
     document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
-    document.getElementById("view-admin").classList.remove("hidden");
+    document.getElementById(`view-${appName}`).classList.remove("hidden");
     saveLastLocation();
-    return loadAdmin();
+    const result = appName === "admin" ? loadAdmin() : loadHomeDashboard();
+    Promise.resolve(result).then(touchLastUpdated);
+    return result;
   }
 
   const validViews = Array.from(document.querySelectorAll(`#top-tabs-${appName} .top-tab`)).map((t) => t.dataset.view);
@@ -108,7 +112,18 @@ function switchView(viewName) {
   saveLastLocation();
 
   const loader = VIEW_LOADERS[viewName];
-  if (loader) return loader();
+  if (loader) {
+    const result = loader();
+    Promise.resolve(result).then(touchLastUpdated);
+    return result;
+  }
+}
+
+/** Small "Last updated HH:MM:SS" footer at the bottom of the main panel —
+ *  stamped whenever the current view's data finishes (re)loading. */
+function touchLastUpdated() {
+  const el = document.getElementById("last-updated-footer");
+  if (el) el.textContent = `Last updated ${new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" })}`;
 }
 
 /** Re-fetches whatever view is currently showing, without a page reload —
@@ -121,6 +136,8 @@ async function refreshCurrentView() {
 
   if (currentApp === "admin") {
     await Promise.all([loadAdmin(), runConnectivityCheck()]);
+  } else if (currentApp === "home") {
+    await Promise.all([loadHomeDashboard(), runConnectivityCheck()]);
   } else {
     const activeTab = document.querySelector(`#top-tabs-${currentApp} .top-tab.active`);
     const viewName = activeTab ? activeTab.dataset.view : APP_DEFAULT_VIEW[currentApp];
@@ -152,6 +169,247 @@ function escapeHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+/* ============================================
+   Themed date picker — replaces native <input type="date"> everywhere,
+   since the browser's native calendar popup can't be restyled to match
+   the theme. The field keeps its original id on a hidden <input>, so any
+   existing `document.getElementById(id).value` read/write (form submits,
+   the due-date quick-pick chips) keeps working unchanged; a styled
+   button is the visible, clickable part.
+   ============================================ */
+function toIsoDateLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatDatePickerLabel(isoValue) {
+  if (!isoValue) return "Select a date";
+  const d = new Date(`${isoValue}T00:00:00`);
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}
+
+function datePickerFieldHtml(id, isoValue) {
+  return `
+    <div class="date-picker-field">
+      <button type="button" class="date-picker-trigger" id="${id}-trigger">
+        <span class="date-picker-label">${formatDatePickerLabel(isoValue)}</span>
+        <span class="date-picker-caret">▾</span>
+      </button>
+      <input type="hidden" id="${id}" value="${isoValue || ""}" />
+    </div>`;
+}
+
+/** Sets a date-picker field's value from code (quick-pick chips, "Today"
+ *  footer button) and keeps the trigger's visible label in sync. */
+function setDatePickerValue(id, isoValue) {
+  const input = document.getElementById(id);
+  if (input) input.value = isoValue;
+  const label = document.querySelector(`#${id}-trigger .date-picker-label`);
+  if (label) label.textContent = formatDatePickerLabel(isoValue);
+  closeDatePickerPopover();
+}
+
+function wireDatePickerField(id) {
+  const trigger = document.getElementById(`${id}-trigger`);
+  if (!trigger) return;
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (datePickerState && datePickerState.id === id) {
+      closeDatePickerPopover();
+      return;
+    }
+    openDatePickerPopover(id, trigger);
+  });
+}
+
+let datePickerState = null; // { id, year, month } while a popover is open
+
+function openDatePickerPopover(id, trigger) {
+  closeDatePickerPopover();
+  closeCustomSelectPopover();
+
+  const currentVal = document.getElementById(id).value;
+  const base = currentVal ? new Date(`${currentVal}T00:00:00`) : new Date();
+  datePickerState = { id, year: base.getFullYear(), month: base.getMonth() };
+
+  const el = document.createElement("div");
+  el.className = "date-picker-popover";
+  document.body.appendChild(el);
+  renderDatePickerPopover(el, currentVal);
+
+  const rect = trigger.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  el.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - elRect.width - 8))}px`;
+  el.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - elRect.height - 8)}px`;
+
+  setTimeout(() => document.addEventListener("click", closeDatePickerOnOutsideClick), 0);
+}
+
+function closeDatePickerOnOutsideClick(e) {
+  const popover = document.querySelector(".date-picker-popover");
+  if (popover && !popover.contains(e.target)) closeDatePickerPopover();
+}
+
+function closeDatePickerPopover() {
+  document.removeEventListener("click", closeDatePickerOnOutsideClick);
+  document.querySelectorAll(".date-picker-popover").forEach((el) => el.remove());
+  datePickerState = null;
+}
+
+function renderDatePickerPopover(el, selectedIso) {
+  const { id, year, month } = datePickerState;
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayIso = toIsoDateLocal(new Date());
+
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(`<div class="date-picker-cell empty"></div>`);
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    cells.push(
+      `<button type="button" class="date-picker-cell ${iso === todayIso ? "today" : ""} ${iso === selectedIso ? "selected" : ""}" data-iso="${iso}">${day}</button>`
+    );
+  }
+
+  el.innerHTML = `
+    <div class="date-picker-header">
+      <button type="button" class="date-picker-nav" data-dir="-1" aria-label="Previous month">&lsaquo;</button>
+      <span>${new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" })}</span>
+      <button type="button" class="date-picker-nav" data-dir="1" aria-label="Next month">&rsaquo;</button>
+    </div>
+    <div class="date-picker-weekdays"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div>
+    <div class="date-picker-grid">${cells.join("")}</div>
+    <div class="date-picker-footer">
+      <button type="button" class="date-picker-today-btn" data-iso="${todayIso}">Today</button>
+    </div>
+  `;
+
+  el.querySelectorAll(".date-picker-nav").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      datePickerState.month += parseInt(btn.dataset.dir, 10);
+      if (datePickerState.month < 0) {
+        datePickerState.month = 11;
+        datePickerState.year--;
+      } else if (datePickerState.month > 11) {
+        datePickerState.month = 0;
+        datePickerState.year++;
+      }
+      renderDatePickerPopover(el, selectedIso);
+    });
+  });
+
+  el.querySelectorAll(".date-picker-cell[data-iso], .date-picker-today-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setDatePickerValue(id, btn.dataset.iso);
+    });
+  });
+}
+
+/* ============================================
+   Themed dropdown — same problem as the date picker: once a native
+   <select> is open, its option list is drawn by the OS/browser and can't
+   be restyled. This hides the real <select> (kept in the DOM so its
+   .value / "change" event / existing edit-form pre-selection all keep
+   working untouched) behind a themed trigger + popover list. Call
+   enhanceSelect(id) once the <select> is in the DOM.
+   ============================================ */
+let customSelectState = null;
+
+/** Always re-reads the live element by id rather than closing over a
+ *  reference — some callers (admin.js) clone-and-replace their <select>
+ *  on every visit to reset its listeners, which would otherwise leave
+ *  the trigger pointing at a detached element. */
+function syncSelectTriggerLabel(id) {
+  const nativeSelect = document.getElementById(id);
+  const trigger = nativeSelect && nativeSelect.closest(".custom-select-wrap")?.querySelector(".custom-select-trigger");
+  if (!nativeSelect || !trigger) return;
+  const opt = nativeSelect.options[nativeSelect.selectedIndex];
+  trigger.innerHTML = `<span>${escapeHtml(opt ? opt.textContent : "")}</span><span class="custom-select-caret">▾</span>`;
+}
+
+function enhanceSelect(id) {
+  const nativeSelect = document.getElementById(id);
+  if (!nativeSelect) return;
+
+  // Already wrapped from a previous call (e.g. this view was reloaded) —
+  // just make sure the trigger label matches the current selection.
+  if (nativeSelect.parentNode && nativeSelect.parentNode.classList.contains("custom-select-wrap")) {
+    syncSelectTriggerLabel(id);
+    return;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "custom-select-wrap";
+  nativeSelect.parentNode.insertBefore(wrap, nativeSelect);
+  wrap.appendChild(nativeSelect);
+  nativeSelect.classList.add("custom-select-native");
+  nativeSelect.tabIndex = -1;
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "custom-select-trigger";
+  wrap.appendChild(trigger);
+
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (customSelectState && customSelectState.id === id) {
+      closeCustomSelectPopover();
+      return;
+    }
+    openCustomSelectPopover(id, trigger);
+  });
+
+  syncSelectTriggerLabel(id);
+}
+
+function openCustomSelectPopover(id, trigger) {
+  closeCustomSelectPopover();
+  closeDatePickerPopover();
+  customSelectState = { id };
+
+  const nativeSelect = document.getElementById(id);
+  const el = document.createElement("div");
+  el.className = "custom-select-popover";
+  el.innerHTML = Array.from(nativeSelect.options)
+    .map(
+      (o, i) =>
+        `<button type="button" class="custom-select-option ${i === nativeSelect.selectedIndex ? "selected" : ""}" data-index="${i}">${escapeHtml(o.textContent)}</button>`
+    )
+    .join("");
+  document.body.appendChild(el);
+
+  const rect = trigger.getBoundingClientRect();
+  el.style.width = `${rect.width}px`;
+  const elRect = el.getBoundingClientRect();
+  el.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - elRect.width - 8))}px`;
+  el.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - elRect.height - 8)}px`;
+
+  el.querySelectorAll(".custom-select-option").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const select = document.getElementById(id);
+      select.selectedIndex = parseInt(btn.dataset.index, 10);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      syncSelectTriggerLabel(id);
+      closeCustomSelectPopover();
+    });
+  });
+
+  setTimeout(() => document.addEventListener("click", closeCustomSelectOnOutsideClick), 0);
+}
+
+function closeCustomSelectOnOutsideClick(e) {
+  const popover = document.querySelector(".custom-select-popover");
+  if (popover && !popover.contains(e.target)) closeCustomSelectPopover();
+}
+
+function closeCustomSelectPopover() {
+  document.removeEventListener("click", closeCustomSelectOnOutsideClick);
+  document.querySelectorAll(".custom-select-popover").forEach((el) => el.remove());
+  customSelectState = null;
 }
 
 /* ============================================
@@ -187,8 +445,8 @@ async function computeWorkoutDashboardStats() {
   }
 
   const all = workouts || [];
-  const totalWorkouts = all.length;
   const now = new Date();
+  const daysSinceLastLog = all.length > 0 ? Math.floor((now - new Date(all[all.length - 1].started_at)) / 86400000) : null;
 
   const byStation = {};
   all.forEach((w) => {
@@ -206,7 +464,7 @@ async function computeWorkoutDashboardStats() {
   });
 
   let biggestGain = null;
-  let prsThisMonth = 0;
+  let bestImprovedStation = null; // biggest all-time % gain, first logged weight -> most recent
   const achievementsByWorkout = {}; // workoutId -> [{ type: 'pr'|'gain', station, amount }]
 
   Object.values(byStation).forEach(({ name, sessions }) => {
@@ -222,7 +480,6 @@ async function computeWorkoutDashboardStats() {
       if (!achievementsByWorkout[session.workoutId]) achievementsByWorkout[session.workoutId] = [];
       if (isPR) {
         achievementsByWorkout[session.workoutId].push({ type: "pr", station: name });
-        if (sessionDate.getFullYear() === now.getFullYear() && sessionDate.getMonth() === now.getMonth()) prsThisMonth++;
       } else if (delta > 0) {
         achievementsByWorkout[session.workoutId].push({ type: "gain", station: name, amount: delta });
       }
@@ -233,9 +490,23 @@ async function computeWorkoutDashboardStats() {
         if (!biggestGain || delta > biggestGain.delta) biggestGain = { name, delta };
       }
     });
+
+    if (sessions.length >= 2 && sessions[0].weight > 0) {
+      const pct = ((sessions[sessions.length - 1].weight - sessions[0].weight) / sessions[0].weight) * 100;
+      if (pct > 0 && (!bestImprovedStation || pct > bestImprovedStation.pct)) bestImprovedStation = { name, pct };
+    }
   });
 
-  return { totalWorkouts, prsThisMonth, biggestGain, achievementsByWorkout };
+  return { totalWorkouts: all.length, daysSinceLastLog, bestImprovedStation, biggestGain, achievementsByWorkout };
+}
+
+/** "Today" / "Yesterday" / "Nd ago" — shared by the desktop and mobile
+ *  dashboard's "Days since last log" card. */
+function formatDaysSinceLog(days) {
+  if (days === null) return "—";
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return `${days}d ago`;
 }
 
 function renderDashboardStats(stats) {
@@ -247,12 +518,12 @@ function renderDashboardStats(stats) {
 
   el.innerHTML = `
     <div class="stat-card">
-      <div class="label">Total workouts</div>
-      <div class="value">${stats.totalWorkouts}</div>
+      <div class="label">Days since last log</div>
+      <div class="value">${formatDaysSinceLog(stats.daysSinceLastLog)}</div>
     </div>
     <div class="stat-card">
-      <div class="label">PRs this month</div>
-      <div class="value">${stats.prsThisMonth}</div>
+      <div class="label">Best improved station</div>
+      <div class="value" style="font-size:19px;">${stats.bestImprovedStation ? `${escapeHtml(stats.bestImprovedStation.name)} +${Math.round(stats.bestImprovedStation.pct)}%` : "—"}</div>
     </div>
     <div class="stat-card">
       <div class="label">Biggest gain (30d)</div>

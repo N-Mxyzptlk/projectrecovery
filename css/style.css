@@ -269,6 +269,185 @@ input[type="number"] {
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
+/* ============================================
+   Themed date picker + dropdown — replace native <input type="date"> and
+   <select> popups, whose open state is drawn by the OS/browser and can't
+   be restyled with CSS. Used by desktop and mobile alike.
+   ============================================ */
+.date-picker-field,
+.custom-select-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.custom-select-native {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.date-picker-trigger,
+.custom-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: var(--font-mono);
+  text-align: left;
+  transition: border-color 0.15s ease;
+}
+
+.date-picker-trigger:hover,
+.custom-select-trigger:hover {
+  border-color: var(--text-muted);
+}
+
+.date-picker-caret,
+.custom-select-caret {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.date-picker-popover,
+.custom-select-popover {
+  position: fixed;
+  z-index: 600;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+
+.date-picker-popover {
+  width: 260px;
+  padding: 12px;
+}
+
+.date-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  margin-bottom: 10px;
+}
+
+.date-picker-nav {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.date-picker-nav:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.date-picker-weekdays,
+.date-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.date-picker-weekdays {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.date-picker-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.date-picker-cell:not(.empty):hover {
+  background: var(--surface-hover);
+}
+
+.date-picker-cell.today {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.date-picker-cell.selected {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.date-picker-footer {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.date-picker-today-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+}
+
+.date-picker-today-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.custom-select-popover {
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.custom-select-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 9px 10px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+.custom-select-option:hover {
+  background: var(--surface-hover);
+}
+
+.custom-select-option.selected {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
 .btn-primary {
   width: 100%;
   background: linear-gradient(135deg, var(--accent), #574fd6);
@@ -428,6 +607,13 @@ input[type="number"] {
   flex: 1;
   overflow-y: auto;
   padding: 32px 40px;
+}
+
+.last-updated-footer {
+  margin-top: 24px;
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: right;
 }
 
 .top-tabs {
@@ -1318,6 +1504,320 @@ input[type="number"] {
   height: 16px;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* ============================================
+   Home — the command-center landing page. Shared by the desktop
+   .home-grid layout and the mobile stacked-panel screen; a HUD feel
+   (corner brackets, glow, a faint scanline grid) leaning into the
+   sci-fi/"control room" direction the rest of the app already hints at
+   with the diagonal body texture and status-light glows.
+   ============================================ */
+.home-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 26px 28px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.home-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(108, 99, 255, 0.05) 0px,
+    rgba(108, 99, 255, 0.05) 1px,
+    transparent 1px,
+    transparent 40px
+  );
+  pointer-events: none;
+}
+
+.home-clock {
+  position: relative;
+  font-family: var(--font-display);
+  font-size: 60px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  text-shadow: 0 0 22px var(--accent-glow);
+  line-height: 1;
+}
+
+.home-date {
+  position: relative;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.home-hero-right {
+  position: relative;
+  text-align: right;
+}
+
+.home-status-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.home-callsign {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+}
+
+.home-hero-mobile {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 22px;
+}
+
+.home-hero-mobile .home-clock {
+  font-size: 40px;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.home-panel {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+
+.home-grid > .home-panel {
+  margin-bottom: 0;
+}
+
+.home-panel::before,
+.home-panel::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.home-panel::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+}
+
+.home-panel::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.home-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.home-panel-header h4 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  margin: 0;
+}
+
+.home-panel-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.home-empty {
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 20px 0;
+  text-align: center;
+}
+
+.home-todo-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.home-todo-form input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+.home-todo-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.home-todo-list,
+.home-payment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.home-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.home-todo-item:last-child {
+  border-bottom: none;
+}
+
+.home-todo-check {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  color: var(--success);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-todo-item.done .home-todo-check {
+  border-color: var(--success);
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.home-todo-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.home-todo-item.done .home-todo-text {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+.home-todo-delete {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 17px;
+  line-height: 1;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.home-todo-delete:hover {
+  color: var(--danger);
+}
+
+.home-payment-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.home-payment-item:last-child {
+  border-bottom: none;
+}
+
+.home-payment-name {
+  flex: 1;
+  color: var(--text);
+}
+
+.home-payment-days {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.home-payment-amount {
+  color: var(--gold);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.home-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.home-shortcut {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.home-shortcut:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 16px var(--accent-glow);
+}
+
+.home-shortcut-label {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+.home-shortcut-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 #workouts-selected-count {

@@ -272,11 +272,10 @@ function wireDueDateQuickPicks(root) {
   (root || document).querySelectorAll(".date-quick-pick").forEach((btn) => {
     btn.addEventListener("click", () => {
       const wrap = btn.closest(".date-quick-picks");
-      const input = document.getElementById(wrap.dataset.target);
       const d = new Date();
       d.setMonth(d.getMonth() + parseInt(btn.dataset.months || "0", 10));
       d.setDate(d.getDate() + parseInt(btn.dataset.days || "0", 10));
-      input.value = d.toISOString().slice(0, 10);
+      setDatePickerValue(wrap.dataset.target, toIsoDateLocal(d));
     });
   });
 }
@@ -520,12 +519,10 @@ async function loadFinanceDashboard() {
   });
   const monthTotal = monthExpenses.reduce((s, e) => s + Number(e.amount), 0);
 
-  const dueSoonOrOverdue = financePaymentsCache.filter((p) => {
-    const status = computePaymentDisplayStatus(p);
-    return status === "due-soon" || status === "overdue";
-  });
-  const hasOverdue = dueSoonOrOverdue.some((p) => computePaymentDisplayStatus(p) === "overdue");
-  const dueSoonTotal = dueSoonOrOverdue.reduce((s, p) => s + Number(p.amount), 0);
+  const dueSoon = financePaymentsCache.filter((p) => computePaymentDisplayStatus(p) === "due-soon");
+  const overdue = financePaymentsCache.filter((p) => computePaymentDisplayStatus(p) === "overdue");
+  const dueSoonTotal = dueSoon.reduce((s, p) => s + Number(p.amount), 0);
+  const overdueTotal = overdue.reduce((s, p) => s + Number(p.amount), 0);
 
   const categoryTotals = {};
   monthExpenses.forEach((e) => {
@@ -541,16 +538,16 @@ async function loadFinanceDashboard() {
       <div class="value">${formatMoney(monthTotal)}</div>
     </div>
     <div class="stat-card">
-      <div class="label">Due soon / overdue</div>
-      <div class="value ${hasOverdue ? "danger" : ""}">${formatMoney(dueSoonTotal)}</div>
+      <div class="label">Due soon</div>
+      <div class="value">${formatMoney(dueSoonTotal)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Overdue</div>
+      <div class="value ${overdue.length ? "danger" : ""}">${formatMoney(overdueTotal)}</div>
     </div>
     <div class="stat-card">
       <div class="label">Top category (this month)</div>
       <div class="value" style="font-size:18px;">${escapeHtml(topCategoryName)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Logged expenses</div>
-      <div class="value">${allExpenses.length}</div>
     </div>
   `;
 
@@ -735,7 +732,7 @@ function openExpenseModal(expenseId) {
       </div>
       <div class="field">
         <label>Date</label>
-        <input type="date" id="expense-date" required value="${dateVal}" />
+        ${datePickerFieldHtml("expense-date", dateVal)}
       </div>
       <div class="field">
         <label>Note (optional)</label>
@@ -747,6 +744,9 @@ function openExpenseModal(expenseId) {
       </div>
     </form>
   `);
+
+  wireDatePickerField("expense-date");
+  enhanceSelect("expense-category");
 
   document.getElementById("expense-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -945,7 +945,7 @@ function openPaymentModal(paymentId) {
       </div>
       <div class="field">
         <label>Next due date</label>
-        <input type="date" id="payment-due-date" required value="${existing ? existing.next_due_date : new Date().toISOString().slice(0, 10)}" />
+        ${datePickerFieldHtml("payment-due-date", existing ? existing.next_due_date : toIsoDateLocal(new Date()))}
         ${dueDateQuickPicksHtml("payment-due-date")}
       </div>
       <div class="field">
@@ -960,7 +960,10 @@ function openPaymentModal(paymentId) {
     </form>
   `);
 
+  wireDatePickerField("payment-due-date");
   wireDueDateQuickPicks();
+  enhanceSelect("payment-kind");
+  enhanceSelect("payment-recurrence");
 
   const kindSelect = document.getElementById("payment-kind");
   const recurrenceField = document.getElementById("payment-recurrence-field");
@@ -1064,10 +1067,8 @@ function renderFinanceDashboardScreenMobile() {
   });
   const monthTotal = monthExpenses.reduce((s, e) => s + Number(e.amount), 0);
 
-  const dueSoonOrOverdue = financePaymentsCache.filter((p) => {
-    const status = computePaymentDisplayStatus(p);
-    return status === "due-soon" || status === "overdue";
-  });
+  const dueSoonCount = financePaymentsCache.filter((p) => computePaymentDisplayStatus(p) === "due-soon").length;
+  const overdueCount = financePaymentsCache.filter((p) => computePaymentDisplayStatus(p) === "overdue").length;
 
   document.getElementById("m-main").innerHTML = `
     <div class="m-dash-stats-grid">
@@ -1077,7 +1078,11 @@ function renderFinanceDashboardScreenMobile() {
       </div>
       <div class="m-dash-stat-tile">
         <div class="label">Due soon</div>
-        <div class="value ${dueSoonOrOverdue.length ? "danger" : ""}">${dueSoonOrOverdue.length}</div>
+        <div class="value">${dueSoonCount}</div>
+      </div>
+      <div class="m-dash-stat-tile" style="grid-column: span 2;">
+        <div class="label">Overdue</div>
+        <div class="value ${overdueCount ? "danger" : ""}">${overdueCount}</div>
       </div>
     </div>
 
@@ -1430,7 +1435,7 @@ function openAddPaymentSheetMobile() {
         </div>
         <div class="m-stat-block" style="margin-bottom:14px;">
           <div class="label">Next due date</div>
-          <input type="date" id="m-payment-due-date" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+          <div style="margin-top:8px;">${datePickerFieldHtml("m-payment-due-date", toIsoDateLocal(new Date()))}</div>
           ${dueDateQuickPicksHtml("m-payment-due-date")}
         </div>
         <div class="m-stat-block" style="margin-bottom:14px;">
@@ -1444,6 +1449,7 @@ function openAddPaymentSheetMobile() {
     </div>
   `;
   document.body.appendChild(overlay);
+  wireDatePickerField("m-payment-due-date");
   wireDueDateQuickPicks(overlay);
 
   overlay.addEventListener("click", (e) => {

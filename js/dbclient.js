@@ -192,6 +192,7 @@ function refreshStatusLights() {
   [
     ["status-dot", "status-text"],
     ["m-status-dot", "m-status-text"],
+    ["home-status-dot", "home-status-text"],
   ].forEach(([dotId, textId]) => {
     const dot = document.getElementById(dotId);
     const text = document.getElementById(textId);

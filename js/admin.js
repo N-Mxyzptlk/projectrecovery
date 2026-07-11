@@ -12,7 +12,9 @@ async function loadAdmin() {
   document.getElementById("admin-auto-logout").value = String(profile?.auto_logout_minutes ?? 30);
 
   wireAdminActions();
+  enhanceSelect("admin-auto-logout");
   loadAdminRowCounts();
+  loadAdminDatabaseSize();
 }
 
 function wireAdminActions() {
@@ -95,9 +97,32 @@ async function changePassword() {
   input.value = "";
 }
 
+async function loadAdminDatabaseSize() {
+  const el = document.getElementById("admin-db-size");
+  if (!el) return;
+  const { data, error } = await supabaseClient.rpc("get_database_size");
+  if (error || data == null) {
+    el.textContent = "Unavailable — run the latest sql/home_schema.sql migration.";
+    return;
+  }
+  el.textContent = formatBytes(Number(data));
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
 async function loadAdminRowCounts() {
   const el = document.getElementById("admin-row-counts");
-  const tables = ["stations", "workouts", "workout_sets", "finance_categories", "finance_payments", "finance_expenses"];
+  const tables = ["stations", "workouts", "workout_sets", "finance_categories", "finance_payments", "finance_expenses", "todos"];
 
   try {
     const counts = await Promise.all(
@@ -116,13 +141,14 @@ async function exportAllData() {
   btn.textContent = "Exporting...";
 
   try {
-    const [stations, workouts, sets, financeCategories, financePayments, financeExpenses] = await Promise.all([
+    const [stations, workouts, sets, financeCategories, financePayments, financeExpenses, todos] = await Promise.all([
       supabaseClient.from("stations").select("*"),
       supabaseClient.from("workouts").select("*"),
       supabaseClient.from("workout_sets").select("*"),
       supabaseClient.from("finance_categories").select("*"),
       supabaseClient.from("finance_payments").select("*"),
       supabaseClient.from("finance_expenses").select("*"),
+      supabaseClient.from("todos").select("*"),
     ]);
 
     const backup = {
@@ -132,6 +158,7 @@ async function exportAllData() {
       workout_sets: sets.data || [],
       finance_categories: financeCategories.data || [],
       finance_payments: financePayments.data || [],
+      todos: todos.data || [],
       finance_expenses: financeExpenses.data || [],
     };
 

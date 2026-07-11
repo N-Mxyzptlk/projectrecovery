@@ -57,6 +57,9 @@
   <div id="m-app-drawer-overlay" class="m-app-drawer-overlay hidden">
     <nav class="m-app-drawer" id="m-app-drawer">
       <div class="m-drawer-brand">NUL SYSTEMS</div>
+      <div class="m-drawer-app-item" data-app="home">
+        <div class="m-drawer-app-name">Home</div>
+      </div>
       <div class="m-drawer-app-item" data-app="workout">
         <div class="m-drawer-app-name">Workout</div>
       </div>
@@ -86,7 +89,8 @@
       </div>
 
       <div class="sidebar-section-label">Apps</div>
-      <div class="nav-item app-nav-item active" data-app="workout">Workout</div>
+      <div class="nav-item app-nav-item active" data-app="home">Home</div>
+      <div class="nav-item app-nav-item" data-app="workout">Workout</div>
       <div class="nav-item app-nav-item" data-app="finance">Finance</div>
 
       <div class="sidebar-section-label">Account</div>
@@ -104,10 +108,10 @@
     </nav>
 
     <main class="main">
-      <div class="top-tabs" id="top-tabs-workout">
+      <div class="top-tabs hidden" id="top-tabs-workout">
         <div class="top-tab active" data-view="dashboard">Dashboard</div>
-        <div class="top-tab" data-view="stations">Stations</div>
         <div class="top-tab" data-view="progress">Progress</div>
+        <div class="top-tab" data-view="stations">Stations</div>
         <div class="top-tab" data-view="workouts">Workouts</div>
       </div>
       <div class="top-tabs hidden" id="top-tabs-finance">
@@ -116,7 +120,52 @@
         <div class="top-tab" data-view="payments">Payments</div>
       </div>
 
-      <div id="app-views-workout">
+      <!-- HOME — command-center landing page, not tied to any one app -->
+      <div id="app-views-home">
+        <section id="view-home" class="view">
+          <div class="home-hero">
+            <div class="home-hero-left">
+              <div class="home-clock" id="home-clock">00:00:00</div>
+              <div class="home-date" id="home-date">—</div>
+            </div>
+            <div class="home-hero-right">
+              <div class="home-status-line"><span class="status-dot" id="home-status-dot"></span><span id="home-status-text">Checking...</span></div>
+              <div class="home-callsign">NUL SYSTEMS // CONTROL CENTER</div>
+            </div>
+          </div>
+
+          <div class="home-grid">
+            <div class="home-panel home-panel-todo">
+              <div class="home-panel-header">
+                <h4>To-Do</h4>
+                <span class="home-panel-sub" id="home-todo-count"></span>
+              </div>
+              <form id="home-todo-form" class="home-todo-form">
+                <input type="text" id="home-todo-input" placeholder="Add a task..." autocomplete="off" />
+                <button type="submit" class="btn-accent">Add</button>
+              </form>
+              <div class="home-todo-list" id="home-todo-list"><!-- filled by JS --></div>
+            </div>
+
+            <div class="home-panel home-panel-payments">
+              <div class="home-panel-header">
+                <h4>Payment Reminders</h4>
+                <span class="home-panel-sub">Next 14 days</span>
+              </div>
+              <div class="home-payment-list" id="home-payment-reminders"><!-- filled by JS --></div>
+            </div>
+
+            <div class="home-panel home-panel-shortcuts">
+              <div class="home-panel-header">
+                <h4>Shortcuts</h4>
+              </div>
+              <div class="home-shortcuts" id="home-shortcuts"><!-- filled by JS --></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div id="app-views-workout" class="hidden">
       <!-- DASHBOARD VIEW (Statistics merged in below) -->
       <section id="view-dashboard" class="view">
         <div class="view-header">
@@ -325,6 +374,12 @@
               <div class="meta" id="admin-row-counts">Loading...</div>
             </div>
           </div>
+          <div class="card-row">
+            <div>
+              <div class="title">Database size</div>
+              <div class="meta" id="admin-db-size">Loading...</div>
+            </div>
+          </div>
           <div class="card-row" style="border-bottom:none;">
             <div>
               <div class="title">Export everything</div>
@@ -345,6 +400,8 @@
           </div>
         </div>
       </section>
+
+      <div class="last-updated-footer" id="last-updated-footer"></div>
     </main>
   </div>
 
@@ -364,6 +421,7 @@
   <script src="js/desktop.js"></script>
   <script src="js/admin.js"></script>
   <script src="js/finance.js"></script>
+  <script src="js/home.js"></script>
   <script src="js/mobile.js"></script>
 
   <script>

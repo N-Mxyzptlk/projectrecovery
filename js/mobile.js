@@ -25,7 +25,7 @@ let mFinishConfirmTimeout = null;
 let mScreen = "log"; // 'dashboard' | 'log' | 'journal'
 let mJournalDate = new Date();
 
-let mApp = "workout"; // 'workout' | 'finance' — which app the mobile shell is showing
+let mApp = "home"; // 'home' | 'workout' | 'finance' — which app the mobile shell is showing
 
 /* ============================================
    Boot
@@ -39,7 +39,9 @@ function initMobileApp(session) {
   renderFabStack();
   wireAppDrawer();
 
-  loadStationsForMobile().then(loadActiveWorkout);
+  loadStationsForMobile(); // preload for when the user switches into Workout
+
+  renderHomeScreenMobile(); // defined in home.js — Home is the default landing screen
 
   checkConnectivity();
   setInterval(checkConnectivity, 60000);
@@ -60,21 +62,26 @@ function collapseFabStack() {
  *  anchors it at the bottom corner (see index.html's m-fab-stack comment). */
 function renderFabStack() {
   const stack = document.getElementById("m-fab-stack");
-  stack.innerHTML = mApp === "workout"
-    ? `
-      <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
-      <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
+  const extraFabs =
+    mApp === "workout"
+      ? `
       <button class="m-fab ${mScreen === "dashboard" ? "active" : ""}" id="m-dashboard-fab" aria-label="Dashboard">▦</button>
       <button class="m-fab ${mScreen === "journal" ? "active" : ""}" id="m-journal-fab" aria-label="Journal">▤</button>
       <button class="m-fab" id="m-add-station-fab" aria-label="Add station">+</button>
     `
-    : `
-      <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
-      <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
+      : mApp === "finance"
+      ? `
       <button class="m-fab ${fScreen === "dashboard" ? "active" : ""}" id="m-fin-dashboard-fab" aria-label="Dashboard">▦</button>
       <button class="m-fab ${fScreen === "due" ? "active" : ""}" id="m-payments-due-fab" aria-label="Payments due">▤</button>
       <button class="m-fab ${fScreen === "log" ? "active" : ""}" id="m-log-expense-fab" aria-label="Log expense">+</button>
-    `;
+    `
+      : ""; // home has no sub-screens — just the toggle + settings below
+
+  stack.innerHTML = `
+    <button class="m-fab m-fab-toggle" id="m-fab-toggle" aria-label="More">⋯</button>
+    <button class="m-fab" id="m-settings-fab" aria-label="Settings">⚙</button>
+    ${extraFabs}
+  `;
 
   document.getElementById("m-fab-toggle").addEventListener("click", toggleFabStack);
   document.getElementById("m-settings-fab").addEventListener("click", () => {
@@ -95,7 +102,7 @@ function renderFabStack() {
       collapseFabStack();
       openAddStationSheet();
     });
-  } else {
+  } else if (mApp === "finance") {
     document.getElementById("m-fin-dashboard-fab").addEventListener("click", () => {
       collapseFabStack();
       setFinanceMobileScreen("dashboard"); // defined in finance.js
@@ -142,6 +149,7 @@ function closeAppDrawer() {
 function switchMobileApp(appName) {
   if (appName === mApp) return closeAppDrawer();
   mApp = appName;
+  if (appName !== "home") stopHomeClock();
   closeAppDrawer();
   renderFabStack();
 
@@ -149,8 +157,10 @@ function switchMobileApp(appName) {
     if (mScreen === "dashboard") renderWorkoutDashboardMobile();
     else if (mScreen === "journal") renderJournalScreen();
     else loadActiveWorkout(); // re-check for an active session and re-render
-  } else {
+  } else if (mApp === "finance") {
     initFinanceMobile(); // defined in finance.js
+  } else {
+    renderHomeScreenMobile(); // defined in home.js
   }
 }
 
@@ -246,12 +256,12 @@ async function renderWorkoutDashboardMobile() {
   main.innerHTML = `
     <div class="m-dash-stats-grid">
       <div class="m-dash-stat-tile">
-        <div class="label">Total workouts</div>
-        <div class="value">${stats.totalWorkouts}</div>
+        <div class="label">Days since last log</div>
+        <div class="value">${formatDaysSinceLog(stats.daysSinceLastLog)}</div>
       </div>
       <div class="m-dash-stat-tile">
-        <div class="label">PRs this month</div>
-        <div class="value">${stats.prsThisMonth}</div>
+        <div class="label">Best improved</div>
+        <div class="value" style="font-size:14px;">${stats.bestImprovedStation ? `${escapeHtmlMobile(stats.bestImprovedStation.name)} +${Math.round(stats.bestImprovedStation.pct)}%` : "—"}</div>
       </div>
       <div class="m-dash-stat-tile" style="grid-column: span 2;">
         <div class="label">Biggest gain (30d)</div>
@@ -1534,6 +1544,7 @@ function renderSettingsSheetBody(profile, email) {
   `;
 
   document.getElementById("m-auto-logout-select").value = String(profile?.auto_logout_minutes ?? 30);
+  enhanceSelect("m-auto-logout-select");
   refreshStatusLights(); // instant reflection of current known state
   runMobileConnectivityCheck(); // then verify freshness
 
