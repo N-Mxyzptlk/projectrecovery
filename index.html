@@ -52,7 +52,7 @@
 
   <!-- Always-visible edge handle — tap or swipe right from here to open
        the app-switcher drawer. Hidden on desktop by the device gate. -->
-  <button id="m-drawer-handle" class="m-drawer-handle hidden" aria-label="Switch app">›</button>
+  <button id="m-drawer-handle" class="m-drawer-handle hidden" aria-label="Switch app"></button>
 
   <div id="m-app-drawer-overlay" class="m-app-drawer-overlay hidden">
     <nav class="m-app-drawer" id="m-app-drawer">
@@ -66,6 +66,9 @@
       <div class="m-drawer-app-item" data-app="finance">
         <div class="m-drawer-app-name">Finance</div>
       </div>
+      <div class="m-drawer-app-item" data-app="guitar">
+        <div class="m-drawer-app-name">Guitar</div>
+      </div>
     </nav>
   </div>
 
@@ -77,13 +80,17 @@
     <!-- filled by mobile.js: renderFabStack() -->
   </div>
 
+  <!-- Shown when the FAB stack is fully hidden (long-press the toggle) —
+       a small always-tappable nub so hiding it never strands the user. -->
+  <button id="m-fab-hidden-nub" class="m-fab-hidden-nub hidden" aria-label="Show quick actions"></button>
+
 
   <!-- ============================================
        DESKTOP APP SHELL
        ============================================ -->
   <div id="app-root" class="hidden">
     <nav class="sidebar">
-      <div class="sidebar-brand">
+      <div class="sidebar-brand" id="sidebar-brand-home-link" role="button" tabindex="0" style="cursor:pointer;">
         <div class="name">NUL SYSTEMS</div>
         <div class="tag">Control Center</div>
       </div>
@@ -92,17 +99,16 @@
       <div class="nav-item app-nav-item active" data-app="home">Home</div>
       <div class="nav-item app-nav-item" data-app="workout">Workout</div>
       <div class="nav-item app-nav-item" data-app="finance">Finance</div>
-
-      <div class="sidebar-section-label">Account</div>
-      <div class="nav-item app-nav-item" data-app="admin">Admin</div>
+      <div class="nav-item app-nav-item" data-app="guitar">Guitar</div>
 
       <div class="sidebar-footer">
         <div class="status-row" id="status-row">
           <span class="status-dot" id="status-dot"></span>
           <span id="status-text">Checking...</span>
         </div>
-        <div class="deployed-row">Last deployed: <span id="last-deployed-text"></span></div>
+        <div class="deployed-row" id="last-updated-row"><span id="last-deployed-text"></span></div>
         <button id="refresh-btn" class="btn-refresh">Refresh</button>
+        <button id="settings-btn" class="app-nav-item btn-settings" data-app="admin">Settings</button>
         <button id="logout-btn">Sign out</button>
       </div>
     </nav>
@@ -134,32 +140,74 @@
             </div>
           </div>
 
-          <div class="home-grid">
-            <div class="home-panel home-panel-todo">
-              <div class="home-panel-header">
-                <h4>To-Do</h4>
-                <span class="home-panel-sub" id="home-todo-count"></span>
+          <!-- Hardcoded 3-column layout — each column is its own independent
+               vertical stack, not a CSS Grid row. That means a widget
+               growing (e.g. To-Do gaining tasks) only ever pushes down
+               whatever's below it in ITS OWN column; the other two columns
+               are completely unaffected. No shared row-track, so no
+               dead-space-gap problem to chase anymore. Column assignment is
+               intentionally fixed here in the markup, not computed. -->
+          <div class="home-grid" id="home-grid">
+            <div class="home-grid-col">
+              <div class="home-panel home-panel-todo">
+                <div class="home-panel-header">
+                  <h4>To-Do</h4>
+                  <span class="home-panel-sub" id="home-todo-count"></span>
+                </div>
+                <form id="home-todo-form" class="home-todo-form">
+                  <input type="text" id="home-todo-input" placeholder="Add a task..." autocomplete="off" />
+                  <button type="submit" class="btn-accent">Add</button>
+                </form>
+                <div class="home-todo-list" id="home-todo-list"><!-- filled by JS --></div>
               </div>
-              <form id="home-todo-form" class="home-todo-form">
-                <input type="text" id="home-todo-input" placeholder="Add a task..." autocomplete="off" />
-                <button type="submit" class="btn-accent">Add</button>
-              </form>
-              <div class="home-todo-list" id="home-todo-list"><!-- filled by JS --></div>
+
+              <!-- Widget slot suggestions: see the comment above
+                   .home-panel-placeholder in style.css. -->
+              <div class="home-panel home-panel-placeholder">
+                <div class="plus">+</div>
+                <div class="label">Widget slot</div>
+                <div class="hint">Reserved for a future widget</div>
+              </div>
             </div>
 
-            <div class="home-panel home-panel-payments">
-              <div class="home-panel-header">
-                <h4>Payment Reminders</h4>
-                <span class="home-panel-sub">Next 14 days</span>
+            <div class="home-grid-col">
+              <div class="home-panel home-panel-payments">
+                <div class="home-panel-header">
+                  <h4>Payment Reminders</h4>
+                  <span class="home-panel-sub">Next 14 days</span>
+                </div>
+                <div class="home-payment-list" id="home-payment-reminders"><!-- filled by JS --></div>
               </div>
-              <div class="home-payment-list" id="home-payment-reminders"><!-- filled by JS --></div>
+
+              <div class="home-panel home-panel-weather" id="home-weather-panel">
+                <div class="home-panel-header">
+                  <h4>Weather</h4>
+                  <div class="home-weather-header-right">
+                    <span class="home-weather-location-label" id="home-weather-location-label"></span>
+                    <button type="button" class="home-weather-location-btn" id="home-weather-location-btn" title="Change location" aria-label="Change location">&#128205;</button>
+                  </div>
+                </div>
+                <div id="home-weather-location-search" class="home-weather-location-search hidden">
+                  <input type="text" id="home-weather-location-input" placeholder="Search for a city..." autocomplete="off" />
+                  <div id="home-weather-location-results"></div>
+                </div>
+                <div id="home-weather-body"><div class="home-empty">Loading...</div></div>
+              </div>
             </div>
 
-            <div class="home-panel home-panel-shortcuts">
-              <div class="home-panel-header">
-                <h4>Shortcuts</h4>
+            <div class="home-grid-col">
+              <div class="home-panel home-panel-shortcuts">
+                <div class="home-panel-header">
+                  <h4>Shortcuts</h4>
+                </div>
+                <div class="home-shortcuts" id="home-shortcuts"><!-- filled by JS --></div>
               </div>
-              <div class="home-shortcuts" id="home-shortcuts"><!-- filled by JS --></div>
+
+              <div class="home-panel home-panel-placeholder">
+                <div class="plus">+</div>
+                <div class="label">Widget slot</div>
+                <div class="hint">Reserved for a future widget</div>
+              </div>
             </div>
           </div>
         </section>
@@ -283,8 +331,15 @@
               <div id="finance-calendar"></div>
             </div>
             <div class="card">
-              <h4 class="admin-section-title">Recent expenses</h4>
+              <h4 class="admin-section-title">Recent transactions</h4>
               <div id="finance-dashboard-recent-expenses"></div>
+            </div>
+            <div class="card finance-recurring-income-card">
+              <div class="view-header" style="margin:0 0 14px;">
+                <h4 class="admin-section-title" style="margin:0;">Recurring income</h4>
+                <button class="btn-ghost" id="add-recurring-income-btn" style="padding:5px 12px;font-size:12px;">+ Add</button>
+              </div>
+              <div id="finance-recurring-income-list"></div>
             </div>
           </div>
         </section>
@@ -319,11 +374,30 @@
         </section>
       </div>
 
+      <!-- GUITAR VIEW — single flat page, no top-tabs: filter chips instead
+           of separate pages, since that's the whole point (see guitar.js). -->
+      <section id="view-guitar" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h2>Guitar</h2>
+            <div class="subtitle">Songs you're playing, liked, and want to learn</div>
+          </div>
+          <div class="view-header-actions">
+            <button class="btn-ghost btn-clear-all" id="guitar-clear-all-btn">Clear All</button>
+            <button class="btn-accent" id="add-song-btn">+ Add song</button>
+          </div>
+        </div>
+        <div class="top-tabs" id="guitar-filter-tabs">
+          <!-- filled by JS: Catalogue / Liked / Want to Play filter tabs -->
+        </div>
+        <div class="card" id="guitar-songs-list"></div>
+      </section>
+
       <!-- ADMIN VIEW -->
       <section id="view-admin" class="view hidden">
         <div class="view-header">
           <div>
-            <h2>Admin</h2>
+            <h2>Settings</h2>
             <div class="subtitle">Account, backups, and data control</div>
           </div>
         </div>
@@ -336,7 +410,7 @@
               <div class="meta" id="admin-user-email">—</div>
             </div>
           </div>
-          <div class="card-row">
+          <div class="card-row" style="align-items:flex-end;">
             <div class="field" style="flex:1;margin:0;">
               <label>Username (used to sign in)</label>
               <input type="text" id="admin-username" placeholder="e.g. nathan" autocapitalize="off" autocorrect="off" />
@@ -356,7 +430,7 @@
               </select>
             </div>
           </div>
-          <div class="card-row" style="border-bottom:none;">
+          <div class="card-row" style="border-bottom:none;align-items:flex-end;">
             <div class="field" style="flex:1;margin:0;">
               <label>New password</label>
               <input type="password" id="admin-new-password" placeholder="At least 6 characters" />
@@ -383,7 +457,7 @@
           <div class="card-row" style="border-bottom:none;">
             <div>
               <div class="title">Export everything</div>
-              <div class="meta">Downloads a full JSON backup of stations, workouts, sets, and finance data.</div>
+              <div class="meta">Downloads a full JSON backup of stations, workouts, sets, finance data, to-dos, and your guitar catalogue.</div>
             </div>
             <button class="btn-ghost" id="admin-export-btn">Export JSON</button>
           </div>
@@ -391,17 +465,22 @@
 
         <div class="card" style="border-color:var(--danger);">
           <h4 class="admin-section-title" style="color:var(--danger);">Danger zone</h4>
-          <div class="card-row" style="border-bottom:none;">
+          <div class="card-row">
             <div>
               <div class="title">Delete all workout history</div>
               <div class="meta">Removes every workout and logged set. Stations and routines are kept. Cannot be undone.</div>
             </div>
             <button class="icon-btn danger" id="admin-wipe-workouts-btn" style="width:auto;padding:0 14px;">Delete</button>
           </div>
+          <div class="card-row" style="border-bottom:none;">
+            <div>
+              <div class="title">Wipe all data</div>
+              <div class="meta">Deletes everything in every app — stations, workouts, sets, finance data, to-dos, and your guitar catalogue. Your login and account are kept. Cannot be undone.</div>
+            </div>
+            <button class="icon-btn danger" id="admin-wipe-all-btn" style="width:auto;padding:0 14px;">Wipe All</button>
+          </div>
         </div>
       </section>
-
-      <div class="last-updated-footer" id="last-updated-footer"></div>
     </main>
   </div>
 
@@ -421,6 +500,7 @@
   <script src="js/desktop.js"></script>
   <script src="js/admin.js"></script>
   <script src="js/finance.js"></script>
+  <script src="js/guitar.js"></script>
   <script src="js/home.js"></script>
   <script src="js/mobile.js"></script>
 

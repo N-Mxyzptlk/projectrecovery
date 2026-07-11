@@ -25,7 +25,17 @@ let mFinishConfirmTimeout = null;
 let mScreen = "log"; // 'dashboard' | 'log' | 'journal'
 let mJournalDate = new Date();
 
-let mApp = "home"; // 'home' | 'workout' | 'finance' — which app the mobile shell is showing
+let mApp = "home"; // 'home' | 'workout' | 'finance' | 'guitar' — which app the mobile shell is showing
+let mLastUpdatedAt = null; // stamped whenever a screen (re)loads its data — shown in the Settings sheet
+
+/** Mirrors desktop's touchLastUpdated, but mobile has no single switchView
+ *  chokepoint to hang it off — called explicitly wherever a screen finishes
+ *  loading fresh data instead. */
+function touchLastUpdatedMobile() {
+  mLastUpdatedAt = new Date();
+  const el = document.getElementById("m-settings-last-updated-text");
+  if (el) el.textContent = "Last updated: " + formatLastUpdated(mLastUpdatedAt);
+}
 
 /* ============================================
    Boot
@@ -38,22 +48,103 @@ function initMobileApp(session) {
 
   renderFabStack();
   wireAppDrawer();
+  document.getElementById("m-fab-hidden-nub").addEventListener("click", showFabStackFromNub);
 
   loadStationsForMobile(); // preload for when the user switches into Workout
 
   renderHomeScreenMobile(); // defined in home.js — Home is the default landing screen
+  touchLastUpdatedMobile();
 
   checkConnectivity();
   setInterval(checkConnectivity, 60000);
   initAutoLogout();
 }
 
+let mFabToggleLongPressed = false;
+
 function toggleFabStack() {
+  if (mFabToggleLongPressed) {
+    // The pointerup that ends a long-press also fires a click right after —
+    // swallow that one click so it doesn't immediately re-expand what the
+    // long-press just hid.
+    mFabToggleLongPressed = false;
+    return;
+  }
   document.getElementById("m-fab-stack").classList.toggle("collapsed");
 }
 
 function collapseFabStack() {
   document.getElementById("m-fab-stack").classList.add("collapsed");
+}
+
+/** Long-press the toggle to hide the whole stack, not just collapse it —
+ *  for when it's sitting over something the user actually needs to tap.
+ *  A small nub (bottom-right, see index.html) is always there to bring it
+ *  back, so hiding it can never strand anyone without quick actions. */
+function wireFabToggleLongPress(toggleBtn) {
+  const HOLD_MS = 500;
+  const MOVE_TOLERANCE = 10;
+  let timer = null;
+  let startX = 0;
+  let startY = 0;
+
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  toggleBtn.addEventListener("pointerdown", (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    timer = setTimeout(() => {
+      mFabToggleLongPressed = true;
+      hideFabStackFully();
+    }, HOLD_MS);
+  });
+  toggleBtn.addEventListener("pointermove", (e) => {
+    if (timer && (Math.abs(e.clientX - startX) > MOVE_TOLERANCE || Math.abs(e.clientY - startY) > MOVE_TOLERANCE)) cancel();
+  });
+  toggleBtn.addEventListener("pointerup", cancel);
+  toggleBtn.addEventListener("pointercancel", cancel);
+}
+
+function hideFabStackFully() {
+  document.getElementById("m-fab-stack").classList.add("fully-hidden");
+  document.getElementById("m-fab-hidden-nub").classList.remove("hidden");
+}
+
+function showFabStackFromNub() {
+  const stack = document.getElementById("m-fab-stack");
+  stack.classList.remove("fully-hidden");
+  stack.classList.add("collapsed");
+  document.getElementById("m-fab-hidden-nub").classList.add("hidden");
+}
+
+/** Shows a small red "Field required" hint right under an input — used
+ *  wherever a sheet used to just silently no-op on submit if a required
+ *  field was empty, which left people thinking the app was broken rather
+ *  than realizing what they'd missed. Self-clears on the next keystroke. */
+function showFieldRequired(inputEl) {
+  if (!inputEl) return;
+  clearFieldRequired(inputEl);
+  const msg = document.createElement("div");
+  msg.className = "m-field-error";
+  msg.textContent = "Field required";
+  inputEl.insertAdjacentElement("afterend", msg);
+  inputEl.classList.add("m-field-invalid");
+  inputEl.focus();
+  const clear = () => {
+    clearFieldRequired(inputEl);
+    inputEl.removeEventListener("input", clear);
+  };
+  inputEl.addEventListener("input", clear);
+}
+
+function clearFieldRequired(inputEl) {
+  if (!inputEl) return;
+  inputEl.classList.remove("m-field-invalid");
+  const next = inputEl.nextElementSibling;
+  if (next && next.classList.contains("m-field-error")) next.remove();
 }
 
 /** FAB contents are per-app: rebuilt on boot and on every app switch,
@@ -75,6 +166,10 @@ function renderFabStack() {
       <button class="m-fab ${fScreen === "due" ? "active" : ""}" id="m-payments-due-fab" aria-label="Payments due">▤</button>
       <button class="m-fab ${fScreen === "log" ? "active" : ""}" id="m-log-expense-fab" aria-label="Log expense">+</button>
     `
+      : mApp === "guitar"
+      ? `
+      <button class="m-fab" id="m-add-song-fab" aria-label="Add song">+</button>
+    `
       : ""; // home has no sub-screens — just the toggle + settings below
 
   stack.innerHTML = `
@@ -83,7 +178,9 @@ function renderFabStack() {
     ${extraFabs}
   `;
 
-  document.getElementById("m-fab-toggle").addEventListener("click", toggleFabStack);
+  const fabToggleBtn = document.getElementById("m-fab-toggle");
+  fabToggleBtn.addEventListener("click", toggleFabStack);
+  wireFabToggleLongPress(fabToggleBtn);
   document.getElementById("m-settings-fab").addEventListener("click", () => {
     collapseFabStack();
     openSettingsSheet();
@@ -115,6 +212,11 @@ function renderFabStack() {
       collapseFabStack();
       setFinanceMobileScreen("log"); // defined in finance.js
     });
+  } else if (mApp === "guitar") {
+    document.getElementById("m-add-song-fab").addEventListener("click", () => {
+      collapseFabStack();
+      openAddSongSheetMobile(); // defined in guitar.js
+    });
   }
 }
 
@@ -143,7 +245,7 @@ function openAppDrawer() {
 function closeAppDrawer() {
   const overlay = document.getElementById("m-app-drawer-overlay");
   overlay.classList.remove("open");
-  setTimeout(() => overlay.classList.add("hidden"), 220); // matches CSS transition duration
+  setTimeout(() => overlay.classList.add("hidden"), 140); // matches CSS transition duration
 }
 
 function switchMobileApp(appName) {
@@ -159,18 +261,32 @@ function switchMobileApp(appName) {
     else loadActiveWorkout(); // re-check for an active session and re-render
   } else if (mApp === "finance") {
     initFinanceMobile(); // defined in finance.js
+  } else if (mApp === "guitar") {
+    initGuitarMobile(); // defined in guitar.js
   } else {
     renderHomeScreenMobile(); // defined in home.js
   }
+  touchLastUpdatedMobile();
 }
 
 /** Same delta-x-threshold drag pattern as attachJournalSwipe (below), but
- *  starting from the screen edge and opening the drawer rather than a card.
- *  Uses Pointer Events so it works for touch and mouse alike. */
+ *  starting from anywhere in the left portion of the screen and opening the
+ *  drawer rather than a card. Uses Pointer Events so it works for touch and
+ *  mouse alike. */
 function attachEdgeSwipeDrawer() {
-  const EDGE_ZONE = 24; // px from the left edge a drag must start within
+  // Fraction of screen width, not a fixed px count, so the reachable
+  // swipe-start zone scales with device size — "near the middle" rather
+  // than a thin edge sliver that's easy to miss one-handed. Computed fresh
+  // per pointerdown so rotating the device is picked up automatically.
+  const EDGE_ZONE_RATIO = 0.45;
   const OPEN_THRESHOLD = 60; // px dragged right before the drawer commits to opening
   const VERTICAL_CANCEL = 40; // px of vertical drift that cancels it (it's a scroll, not a swipe)
+
+  // Elements that own their own horizontal swipe gesture (e.g. the journal
+  // card's swipe-to-reveal-actions) must win over the drawer swipe — a
+  // pointerdown that starts on one of these never counts as a drawer-open
+  // attempt, no matter how wide EDGE_ZONE_RATIO is.
+  const SWIPE_OWNER_SELECTOR = ".m-swipe-owns-gesture";
 
   let startX = null;
   let startY = null;
@@ -179,7 +295,9 @@ function attachEdgeSwipeDrawer() {
   const root = document.getElementById("mobile-app");
 
   root.addEventListener("pointerdown", (e) => {
-    if (e.clientX > EDGE_ZONE) return;
+    if (e.target.closest(SWIPE_OWNER_SELECTOR)) return;
+    const edgeZonePx = window.innerWidth * EDGE_ZONE_RATIO;
+    if (e.clientX > edgeZonePx) return;
     startX = e.clientX;
     startY = e.clientY;
     active = true;
@@ -230,22 +348,30 @@ function setWorkoutMobileScreen(target) {
     if (mCurrentWorkout) renderActiveSession();
     else renderStartPrompt();
   }
+  touchLastUpdatedMobile();
 }
 
 /** Compact mirror of the desktop dashboard: same stats, same shared
  *  computeWorkoutDashboardStats() query, laid out for one thumb. */
 async function renderWorkoutDashboardMobile() {
   document.getElementById("m-topbar").innerHTML = `
-    <div>
-      <div class="m-title">WORKOUT</div>
-      <div class="m-date">${new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
+    <div class="m-topbar-row">
+      <button type="button" class="m-topbar-back-btn" id="m-workout-dash-back-btn" aria-label="Back">&#8249;</button>
+      <div>
+        <div class="m-title">WORKOUT</div>
+        <div class="m-date">${new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
+      </div>
     </div>
   `;
+  document.getElementById("m-workout-dash-back-btn").addEventListener("click", () => setWorkoutMobileScreen("log"));
 
   const main = document.getElementById("m-main");
   main.innerHTML = `<div class="m-empty" style="padding:40px 0;height:auto;"><p>Loading...</p></div>`;
 
-  const stats = await computeWorkoutDashboardStats(); // defined in desktop.js
+  const [stats, recentWorkouts] = await Promise.all([
+    computeWorkoutDashboardStats(), // defined in desktop.js
+    loadRecentWorkoutsForDashboard(),
+  ]);
   if (mScreen !== "dashboard") return; // user navigated away while this was loading
 
   if (!stats) {
@@ -273,10 +399,76 @@ async function renderWorkoutDashboardMobile() {
       <button type="button" class="m-dash-quick-action" id="m-dash-start-workout">${mCurrentWorkout ? "Continue Workout" : "Start Workout"}</button>
       <button type="button" class="m-dash-quick-action" id="m-dash-view-journal">View Journal</button>
     </div>
+
+    <div class="m-set-list-label">Recent sessions</div>
+    <div id="m-dash-recent-workouts">${renderRecentWorkoutsListMobile(recentWorkouts)}</div>
+    ${recentWorkouts.length > 0 ? `<div class="meta-line" style="text-align:center;margin-top:10px;color:var(--text-faint);font-size:11px;">Hold a session for details</div>` : ""}
   `;
 
   document.getElementById("m-dash-start-workout").addEventListener("click", () => setWorkoutMobileScreen("log"));
   document.getElementById("m-dash-view-journal").addEventListener("click", () => setWorkoutMobileScreen("journal"));
+
+  document.querySelectorAll("#m-dash-recent-workouts .m-dash-recent-row").forEach((row) => {
+    const workout = recentWorkouts.find((w) => w.id === row.dataset.workoutId);
+    if (workout) attachRecentWorkoutHold(row, workout);
+  });
+}
+
+/** Last 5 sessions, sets included — fills the dead space below the quick
+ *  actions and gives holding a row somewhere to go (same detail sheet the
+ *  Journal already uses, so no new UI to maintain). */
+async function loadRecentWorkoutsForDashboard() {
+  const { data, error } = await supabaseClient
+    .from("workouts")
+    .select("*, workout_sets(*, stations(name))")
+    .order("started_at", { ascending: false })
+    .limit(5);
+  return error ? [] : data || [];
+}
+
+function renderRecentWorkoutsListMobile(workouts) {
+  if (workouts.length === 0) {
+    return `<div class="m-empty" style="padding:20px 0;height:auto;"><p>No sessions logged yet.</p></div>`;
+  }
+  return workouts
+    .map((w) => {
+      const stationCount = new Set(w.workout_sets.map((s) => s.station_id)).size;
+      const setCount = w.workout_sets.length;
+      return `
+      <div class="m-dash-recent-row" data-workout-id="${w.id}">
+        <div class="info">
+          <div class="name">${escapeHtmlMobile(w.name || "Workout")}</div>
+          <div class="detail">${new Date(w.started_at).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${stationCount} station${stationCount === 1 ? "" : "s"} · ${setCount} set${setCount === 1 ? "" : "s"}</div>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+/** Hold a row to open the same detail sheet the Journal uses — same
+ *  HOLD_MS/tolerance pattern as attachPaymentLongPress. */
+function attachRecentWorkoutHold(row, workout) {
+  const HOLD_MS = 450;
+  const MOVE_TOLERANCE = 10;
+  let timer = null;
+  let startX = 0;
+  let startY = 0;
+
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  row.addEventListener("pointerdown", (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    timer = setTimeout(() => openJournalDetailSheet(workout), HOLD_MS);
+  });
+  row.addEventListener("pointermove", (e) => {
+    if (timer && (Math.abs(e.clientX - startX) > MOVE_TOLERANCE || Math.abs(e.clientY - startY) > MOVE_TOLERANCE)) cancel();
+  });
+  row.addEventListener("pointerup", cancel);
+  row.addEventListener("pointercancel", cancel);
 }
 
 /* ============================================
@@ -1042,6 +1234,7 @@ function renderJournalTopbar() {
   const isToday = isSameDay(mJournalDate, new Date());
   document.getElementById("m-topbar").innerHTML = `
     <div class="m-journal-bar">
+      <button type="button" class="m-topbar-back-btn" id="m-journal-back-btn" aria-label="Back">&#8249;</button>
       <button class="m-journal-nav-btn" id="m-journal-prev" type="button">Prev</button>
       <div class="m-journal-date-display" id="m-journal-date-display">
         ${isToday ? "Today" : mJournalDate.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
@@ -1051,6 +1244,7 @@ function renderJournalTopbar() {
     </div>
   `;
 
+  document.getElementById("m-journal-back-btn").addEventListener("click", () => setWorkoutMobileScreen("log"));
   document.getElementById("m-journal-prev").addEventListener("click", () => changeJournalDate(-1));
   document.getElementById("m-journal-next").addEventListener("click", () => changeJournalDate(1));
   document.getElementById("m-journal-date-input").addEventListener("change", (e) => {
@@ -1133,7 +1327,7 @@ function renderJournalWorkoutCard(workout) {
     : "in progress";
 
   return `
-    <div class="m-journal-swipe-wrap" data-workout-id="${workout.id}">
+    <div class="m-journal-swipe-wrap m-swipe-owns-gesture" data-workout-id="${workout.id}">
       <button type="button" class="m-swipe-action-btn m-swipe-action-delete">Delete</button>
       <button type="button" class="m-swipe-action-btn m-swipe-action-edit">Edit</button>
       <div class="m-journal-card" data-workout-id="${workout.id}">
@@ -1369,7 +1563,7 @@ async function openJournalDetailSheet(workout) {
       }
 
       const setsHtml = group.sets
-        .map((s) => {
+        .map((s, idx) => {
           let tag = "";
           if (s.weight && prWeight && s.weight >= prWeight) tag += ` <span class="m-pr-label">BEST</span>`;
           if (s.is_pr_attempt) {
@@ -1377,9 +1571,15 @@ async function openJournalDetailSheet(workout) {
               : s.pr_result === "failure" ? ` <span class="m-pr-tag failure">ATTEMPT FAILED</span>`
               : ` <span class="m-pr-tag pending">ATTEMPT PENDING</span>`;
           }
+          // Reps and weight as two separate labeled metrics rather than a
+          // concatenated "12×20kg" string — easier to scan a column of
+          // sets at a glance instead of parsing each row's shorthand.
           return `
             <div class="m-journal-set-row">
-              <span>${s.reps}${s.weight ? `×${s.weight}kg` : ""}${tag}</span>
+              <span class="m-journal-set-num">${s.set_number || idx + 1}</span>
+              <span class="m-journal-set-metric"><strong>${s.reps}</strong><small>reps</small></span>
+              <span class="m-journal-set-metric m-journal-set-weight"><strong>${s.weight || "—"}</strong><small>${s.weight ? "kg" : ""}</small></span>
+              <span class="m-journal-set-tags">${tag}</span>
               <button type="button" class="m-journal-set-edit-btn" data-set-id="${s.id}">Edit</button>
             </div>`;
         })
@@ -1396,7 +1596,9 @@ async function openJournalDetailSheet(workout) {
   );
 
   const slot = document.getElementById("m-detail-stations");
-  if (slot) slot.innerHTML = blocks.join("");
+  if (!slot) return; // the sheet was dismissed while the comparison data was still loading
+
+  slot.innerHTML = blocks.join("");
 
   slot.querySelectorAll(".m-journal-set-edit-btn[data-set-id]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1500,7 +1702,7 @@ function renderSettingsSheetBody(profile, email) {
       <div class="m-status-line">
         <span class="status-dot" id="m-status-dot"></span>
         <span id="m-status-text">Checking...</span>
-        <span class="m-status-deployed">Last deployed: ${LAST_DEPLOYED}</span>
+        <span class="m-status-deployed" id="m-settings-last-updated-text">${mLastUpdatedAt ? "Last updated: " + formatLastUpdated(mLastUpdatedAt) : ""}</span>
       </div>
 
       <div class="m-stat-block">

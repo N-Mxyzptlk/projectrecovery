@@ -38,6 +38,87 @@ function nextCategoryColor() {
 let financeCategoriesCache = [];
 let financePaymentsCache = [];
 let financeExpensesCache = []; // desktop Expenses page cache, for edit lookups
+let financeBalanceEntriesCache = []; // desktop dashboard's full income + adjustment ledger
+let financeRecentBalanceEntries = []; // mobile recent-feed slice, mirrors financeRecentExpenses
+let mFinanceBalance = 0; // mobile's current available-balance number, refreshed alongside the recent feeds
+
+async function loadFinanceRecentBalanceEntries() {
+  const { data, error } = await supabaseClient
+    .from("finance_balance_entries")
+    .select("*")
+    .order("occurred_at", { ascending: false })
+    .limit(10);
+  if (!error) financeRecentBalanceEntries = data || [];
+}
+
+/** Lightweight balance-only fetch (amount column alone) for mobile, which
+ *  never loads the full expense/ledger tables the way the desktop
+ *  dashboard does. */
+async function loadFinanceBalanceSummary() {
+  const [{ data: expenseAmounts }, { data: entryAmounts }] = await Promise.all([
+    supabaseClient.from("finance_expenses").select("amount"),
+    supabaseClient.from("finance_balance_entries").select("amount"),
+  ]);
+  return computeAvailableBalance(expenseAmounts || [], entryAmounts || []);
+}
+
+async function refreshFinanceMobileFeeds() {
+  await Promise.all([loadFinanceRecentExpenses(), loadFinanceRecentBalanceEntries()]);
+  mFinanceBalance = await loadFinanceBalanceSummary();
+}
+
+/** Available balance = every income + adjustment entry, minus every
+ *  expense — always computed over the full ledger, not just whatever
+ *  slice a given view happens to have loaded. */
+function computeAvailableBalance(expenses, balanceEntries) {
+  const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const entryTotal = balanceEntries.reduce((s, b) => s + Number(b.amount), 0);
+  return entryTotal - expenseTotal;
+}
+
+function formatSignedMoney(n) {
+  const num = Number(n);
+  return `${num < 0 ? "-" : "+"}${formatMoney(Math.abs(num))}`;
+}
+
+function formatBalance(n) {
+  const num = Number(n);
+  return num < 0 ? `-${formatMoney(Math.abs(num))}` : formatMoney(num);
+}
+
+function transactionKindBadgeHtml(kind) {
+  if (kind === "income") return `<span class="category-badge" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055;">Income</span>`;
+  return `<span class="category-badge" style="background:#f5c54222;color:#f5c542;border-color:#f5c54255;">Bal. Adjustment</span>`;
+}
+
+/** Merges expenses + balance-ledger entries into one normalized,
+ *  time-sorted feed, so "recent transactions" everywhere (desktop card,
+ *  mobile dashboard, mobile log screen) shows the same row shape
+ *  regardless of which table it actually came from. */
+function mergeTransactions(expenses, balanceEntries, limit) {
+  const merged = [
+    ...expenses.map((e) => ({
+      id: e.id,
+      table: "finance_expenses",
+      kind: "expense",
+      amount: -Math.abs(Number(e.amount)),
+      note: e.note,
+      category_id: e.category_id,
+      occurred_at: e.occurred_at,
+    })),
+    ...balanceEntries.map((b) => ({
+      id: b.id,
+      table: "finance_balance_entries",
+      kind: b.kind,
+      amount: Number(b.amount),
+      note: b.note,
+      category_id: null,
+      occurred_at: b.occurred_at,
+    })),
+  ];
+  merged.sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at));
+  return typeof limit === "number" ? merged.slice(0, limit) : merged;
+}
 
 async function loadFinanceCategories() {
   const { data, error } = await supabaseClient.from("finance_categories").select("*").order("name");
@@ -484,6 +565,7 @@ function wireFinanceActions() {
   document.getElementById("manage-categories-btn").addEventListener("click", openCategoryManagerModal);
   document.getElementById("add-expense-btn").addEventListener("click", () => openExpenseModal());
   document.getElementById("add-payment-btn").addEventListener("click", () => openPaymentModal());
+  document.getElementById("add-recurring-income-btn").addEventListener("click", () => openRecurringIncomeModal());
 }
 
 /* ============================================
@@ -498,19 +580,22 @@ async function loadFinanceDashboard() {
   tilesEl.innerHTML = `<div class="empty-state">Loading...</div>`;
 
   await loadFinanceCategories();
-  const [{ data: expenses, error: expError }, { data: payments, error: payError }] = await Promise.all([
+  const [{ data: expenses, error: expError }, { data: payments, error: payError }, { data: balanceEntries, error: balError }] = await Promise.all([
     supabaseClient.from("finance_expenses").select("*").order("occurred_at", { ascending: true }),
     supabaseClient.from("finance_payments").select("*").order("next_due_date", { ascending: true }),
+    supabaseClient.from("finance_balance_entries").select("*").order("occurred_at", { ascending: true }),
   ]);
 
-  if (expError || payError) {
+  if (expError || payError || balError) {
     tilesEl.innerHTML = `<div class="empty-state">Error loading finance data</div>`;
-    console.error(expError || payError);
+    console.error(expError || payError || balError);
     return;
   }
 
   financePaymentsCache = payments || [];
+  financeBalanceEntriesCache = balanceEntries || [];
   const allExpenses = expenses || [];
+  const availableBalance = computeAvailableBalance(allExpenses, financeBalanceEntriesCache);
 
   const now = new Date();
   const monthExpenses = allExpenses.filter((e) => {
@@ -534,6 +619,10 @@ async function loadFinanceDashboard() {
 
   tilesEl.innerHTML = `
     <div class="stat-card">
+      <div class="label">Available balance</div>
+      <div class="value ${availableBalance < 0 ? "danger" : ""}">${formatBalance(availableBalance)}</div>
+    </div>
+    <div class="stat-card">
       <div class="label">This month</div>
       <div class="value">${formatMoney(monthTotal)}</div>
     </div>
@@ -547,7 +636,7 @@ async function loadFinanceDashboard() {
     </div>
     <div class="stat-card">
       <div class="label">Top category (this month)</div>
-      <div class="value" style="font-size:18px;">${escapeHtml(topCategoryName)}</div>
+      <div class="value stat-value-text" style="font-size:18px;">${escapeHtml(topCategoryName)}</div>
     </div>
   `;
 
@@ -557,23 +646,25 @@ async function loadFinanceDashboard() {
   financeCalendarStateDesktop = { year: now.getFullYear(), month: now.getMonth() };
   wireFinanceCalendar(document.getElementById("finance-calendar"), financeCalendarStateDesktop, "desktop");
 
-  const recentExpenses = [...allExpenses].reverse().slice(0, 8);
+  const recentTransactions = mergeTransactions(allExpenses, financeBalanceEntriesCache, 8);
   const recentEl = document.getElementById("finance-dashboard-recent-expenses");
-  if (recentEl) recentEl.innerHTML = renderExpensesCompactListHtml(recentExpenses);
+  if (recentEl) recentEl.innerHTML = renderTransactionsCompactListHtml(recentTransactions);
+
+  await renderRecurringIncomeList();
 }
 
 let financeCalendarStateDesktop = null;
 let financeCalendarStateMobile = null;
 
-function renderExpensesCompactListHtml(expenses) {
-  if (expenses.length === 0) return `<div class="empty-state">No expenses logged</div>`;
-  return expenses
+function renderTransactionsCompactListHtml(transactions) {
+  if (transactions.length === 0) return `<div class="empty-state">No transactions logged</div>`;
+  return transactions
     .map(
-      (e) => `
+      (t) => `
     <div class="card-row">
       <div>
-        <div class="title">${formatMoney(e.amount)} ${categoryBadgeHtml(e.category_id)}</div>
-        <div class="meta">${new Date(e.occurred_at).toLocaleDateString()}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
+        <div class="title">${formatSignedMoney(t.amount)} ${t.kind === "expense" ? categoryBadgeHtml(t.category_id) : transactionKindBadgeHtml(t.kind)}</div>
+        <div class="meta">${new Date(t.occurred_at).toLocaleDateString()}${t.note ? " · " + escapeHtml(t.note) : ""}</div>
       </div>
     </div>`
     )
@@ -586,15 +677,23 @@ function renderFinanceQuickActions() {
     <button class="quick-action-btn qa-gold" id="fqa-log-expense">
       <div class="label">Log Expense</div>
     </button>
+    <button class="quick-action-btn qa-success" id="fqa-add-income">
+      <div class="label">Add Income</div>
+    </button>
     <button class="quick-action-btn qa-accent" id="fqa-manage-categories">
       <div class="label">Categories</div>
+    </button>
+    <button class="quick-action-btn qa-energy" id="fqa-adjust-balance">
+      <div class="label">Adjust Balance</div>
     </button>
     <button class="quick-action-btn qa-success" id="fqa-new-payment">
       <div class="label">New Payment</div>
     </button>
   `;
   document.getElementById("fqa-log-expense").addEventListener("click", () => openExpenseModal());
+  document.getElementById("fqa-add-income").addEventListener("click", () => openIncomeModal());
   document.getElementById("fqa-manage-categories").addEventListener("click", openCategoryManagerModal);
+  document.getElementById("fqa-adjust-balance").addEventListener("click", () => openAdjustmentModal());
   document.getElementById("fqa-new-payment").addEventListener("click", () => openPaymentModal());
 }
 
@@ -781,6 +880,265 @@ async function deleteExpense(id) {
 }
 
 /* ============================================
+   DESKTOP — Income / balance adjustments
+   ============================================ */
+function openIncomeModal() {
+  openModal(`
+    <h3>Add income</h3>
+    <form id="income-form">
+      <div class="field">
+        <label>Amount (${CURRENCY})</label>
+        <input type="number" step="0.01" min="0.01" id="income-amount" required autofocus />
+      </div>
+      <div class="field">
+        <label>Note (optional)</label>
+        <input type="text" id="income-note" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-accent">Add</button>
+      </div>
+    </form>
+  `);
+
+  document.getElementById("income-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const amount = parseFloat(document.getElementById("income-amount").value);
+    if (!amount || amount <= 0) return;
+
+    const { error } = await supabaseClient.from("finance_balance_entries").insert({
+      kind: "income",
+      amount,
+      note: document.getElementById("income-note").value.trim() || null,
+      occurred_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      alert("Failed to add income: " + error.message);
+      return;
+    }
+    closeModal();
+    loadFinanceDashboard();
+  });
+}
+
+function openAdjustmentModal() {
+  openModal(`
+    <h3>Adjust balance</h3>
+    <form id="adjustment-form">
+      <div class="field">
+        <label>Direction</label>
+        <select id="adjustment-direction">
+          <option value="1" selected>Add to balance</option>
+          <option value="-1">Subtract from balance</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Amount (${CURRENCY})</label>
+        <input type="number" step="0.01" min="0.01" id="adjustment-amount" required autofocus />
+      </div>
+      <div class="field">
+        <label>Note (optional)</label>
+        <input type="text" id="adjustment-note" placeholder="e.g. Correcting a miscount" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-accent">Save</button>
+      </div>
+    </form>
+  `);
+
+  enhanceSelect("adjustment-direction");
+
+  document.getElementById("adjustment-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const magnitude = parseFloat(document.getElementById("adjustment-amount").value);
+    if (!magnitude || magnitude <= 0) return;
+    const sign = parseInt(document.getElementById("adjustment-direction").value, 10);
+
+    const { error } = await supabaseClient.from("finance_balance_entries").insert({
+      kind: "adjustment",
+      amount: magnitude * sign,
+      note: document.getElementById("adjustment-note").value.trim() || null,
+      occurred_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      alert("Failed to save adjustment: " + error.message);
+      return;
+    }
+    closeModal();
+    loadFinanceDashboard();
+  });
+}
+
+async function deleteBalanceEntry(id) {
+  if (!confirm("Delete this entry?")) return;
+  const { error } = await supabaseClient.from("finance_balance_entries").delete().eq("id", id);
+  if (error) return alert("Failed to delete: " + error.message);
+  loadFinanceDashboard();
+}
+
+/* ============================================
+   DESKTOP — Recurring income (allowance). Same shape/mechanics as
+   subscription payments: a rule with a next_due_date that gets "collected"
+   (Mark Received) rather than posting itself, since there's no server-side
+   scheduler here — advanceDueDate() is reused from the payments code above.
+   ============================================ */
+let financeRecurringIncomeCache = [];
+
+async function loadFinanceRecurringIncomeCache() {
+  const { data, error } = await supabaseClient.from("finance_recurring_income").select("*").order("next_due_date", { ascending: true });
+  if (!error) financeRecurringIncomeCache = data || [];
+  return financeRecurringIncomeCache;
+}
+
+function renderRecurringIncomeListHtml() {
+  if (financeRecurringIncomeCache.length === 0) {
+    return `<div class="empty-state">No recurring income set up</div>`;
+  }
+  return financeRecurringIncomeCache
+    .map(
+      (r) => `
+    <div class="card-row">
+      <div>
+        <div class="title">${escapeHtml(r.name)}</div>
+        <div class="meta">${formatMoney(r.amount)} · Repeats ${r.recurrence_interval} · Next ${formatDueDate(r.next_due_date)}</div>
+      </div>
+      <div class="row-actions">
+        <button class="icon-btn action-paid" onclick="markRecurringIncomeReceived('${r.id}')">Received</button>
+        <button class="icon-btn" onclick="openRecurringIncomeModal('${r.id}')">Edit</button>
+        <button class="icon-btn danger" onclick="deleteRecurringIncome('${r.id}')">Delete</button>
+      </div>
+    </div>`
+    )
+    .join("");
+}
+
+async function renderRecurringIncomeList() {
+  await loadFinanceRecurringIncomeCache();
+  const el = document.getElementById("finance-recurring-income-list");
+  if (el) el.innerHTML = renderRecurringIncomeListHtml();
+}
+
+function openRecurringIncomeModal(id) {
+  const existing = id ? financeRecurringIncomeCache.find((r) => r.id === id) : null;
+
+  openModal(`
+    <h3>${existing ? "Edit recurring income" : "New recurring income"}</h3>
+    <form id="recurring-income-form">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="recurring-income-name" required value="${existing ? escapeHtml(existing.name) : ""}" autofocus />
+      </div>
+      <div class="field">
+        <label>Amount (${CURRENCY})</label>
+        <input type="number" step="0.01" min="0.01" id="recurring-income-amount" required value="${existing ? existing.amount : ""}" />
+      </div>
+      <div class="field">
+        <label>Repeats</label>
+        <select id="recurring-income-interval">
+          <option value="weekly" ${existing && existing.recurrence_interval === "weekly" ? "selected" : ""}>Weekly</option>
+          <option value="monthly" ${!existing || existing.recurrence_interval === "monthly" ? "selected" : ""}>Monthly</option>
+          <option value="yearly" ${existing && existing.recurrence_interval === "yearly" ? "selected" : ""}>Yearly</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Expected Income Date</label>
+        ${datePickerFieldHtml("recurring-income-due-date", existing ? existing.next_due_date : toIsoDateLocal(new Date()))}
+        ${dueDateQuickPicksHtml("recurring-income-due-date")}
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
+        ${existing ? `<button type="button" class="btn-ghost btn-clear-all" onclick="deleteRecurringIncome('${existing.id}')">Delete</button>` : ""}
+        <button type="submit" class="btn-accent">Save</button>
+      </div>
+    </form>
+  `);
+
+  wireDatePickerField("recurring-income-due-date");
+  wireDueDateQuickPicks();
+  enhanceSelect("recurring-income-interval");
+
+  document.getElementById("recurring-income-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: document.getElementById("recurring-income-name").value.trim(),
+      amount: parseFloat(document.getElementById("recurring-income-amount").value),
+      recurrence_interval: document.getElementById("recurring-income-interval").value,
+      next_due_date: document.getElementById("recurring-income-due-date").value,
+    };
+
+    let error;
+    if (existing) {
+      ({ error } = await supabaseClient.from("finance_recurring_income").update(payload).eq("id", existing.id));
+    } else {
+      ({ error } = await supabaseClient.from("finance_recurring_income").insert(payload));
+    }
+
+    if (error) {
+      alert("Failed to save recurring income: " + error.message);
+      return;
+    }
+    closeModal();
+    await renderRecurringIncomeList();
+  });
+}
+
+/** "Received": logs an income entry to the balance ledger, then rolls the
+ *  next_due_date forward — same mechanic as markPaymentPaid for
+ *  subscriptions, just in the other direction (money in, not out). */
+async function markRecurringIncomeReceived(id) {
+  const rule = financeRecurringIncomeCache.find((r) => r.id === id);
+  if (!rule) return;
+
+  const { error: incomeError } = await supabaseClient.from("finance_balance_entries").insert({
+    kind: "income",
+    amount: rule.amount,
+    note: rule.name,
+    occurred_at: new Date().toISOString(),
+  });
+  if (incomeError) return alert("Failed to log income: " + incomeError.message);
+
+  const { error } = await supabaseClient
+    .from("finance_recurring_income")
+    .update({ next_due_date: advanceDueDate(rule.next_due_date, rule.recurrence_interval) })
+    .eq("id", id);
+  if (error) return alert("Failed to update recurring income: " + error.message);
+
+  await refreshAfterRecurringIncomeAction();
+}
+
+async function deleteRecurringIncome(id) {
+  if (!confirm("Delete this recurring income?")) return;
+  const { error } = await supabaseClient.from("finance_recurring_income").delete().eq("id", id);
+  if (error) return alert("Failed to delete: " + error.message);
+  closeModal();
+  await refreshAfterRecurringIncomeAction();
+}
+
+/** Re-renders whichever surface(s) — desktop dashboard and/or the mobile
+ *  balance sheet — are currently showing recurring income data, same
+ *  visibility-gated pattern as refreshFinanceAfterAction. */
+async function refreshAfterRecurringIncomeAction() {
+  await loadFinanceRecurringIncomeCache();
+
+  const dashView = document.getElementById("view-findash");
+  if (dashView && !dashView.classList.contains("hidden")) {
+    const el = document.getElementById("finance-recurring-income-list");
+    if (el) el.innerHTML = renderRecurringIncomeListHtml();
+    loadFinanceDashboard();
+  }
+
+  if (mApp === "finance") {
+    mFinanceBalance = await loadFinanceBalanceSummary();
+    const listEl = document.getElementById("m-recurring-income-list");
+    if (listEl) listEl.innerHTML = renderRecurringIncomeListHtmlMobile();
+    else renderFinanceMobileScreen();
+  }
+}
+
+/* ============================================
    DESKTOP — Categories
    ============================================ */
 function openCategoryManagerModal() {
@@ -894,17 +1252,22 @@ function renderPaymentRow(payment, status) {
       <button class="icon-btn action-cancel" onclick="markPaymentCancelled('${payment.id}')">Cancel</button>
     `
     : status === "upcoming"
-    ? `<button class="icon-btn action-cancel" onclick="markPaymentCancelled('${payment.id}')">Cancel</button>`
+    ? `
+      <button class="icon-btn action-paid" onclick="markPaymentPaid('${payment.id}')">Paid</button>
+      <button class="icon-btn action-cancel" onclick="markPaymentCancelled('${payment.id}')">Cancel</button>
+    `
     : "";
 
   return `
     <div class="payment-row status-${status}">
-      <div>
-        <div class="payment-name">${escapeHtml(payment.name)}</div>
-        <div class="payment-meta">${payment.kind === "subscription" ? `Repeats ${payment.recurrence_interval}` : "One-time"} · Due ${formatDueDate(payment.next_due_date)}</div>
+      <div class="payment-row-main">
+        <span class="payment-status-badge status-${status}">${paymentStatusLabel(status)}</span>
+        <div>
+          <div class="payment-name">${escapeHtml(payment.name)}</div>
+          <div class="payment-meta">${payment.kind === "subscription" ? `Repeats ${payment.recurrence_interval}` : "One-time"} · Due ${formatDueDate(payment.next_due_date)}</div>
+        </div>
       </div>
       <div style="display:flex;align-items:center;">
-        <span class="payment-status-badge status-${status}">${paymentStatusLabel(status)}</span>
         <span class="payment-amount">${formatMoney(payment.amount)}</span>
         <div class="payment-actions">
           ${actionsHtml}
@@ -1017,7 +1380,7 @@ let financeRecentExpenses = [];
 async function initFinanceMobile() {
   await loadFinanceCategories();
   await loadFinancePaymentsCache();
-  await loadFinanceRecentExpenses();
+  await refreshFinanceMobileFeeds();
   if (!fSelectedCategoryId && financeCategoriesCache.length > 0) {
     fSelectedCategoryId = financeCategoriesCache[0].id;
   }
@@ -1037,6 +1400,7 @@ function setFinanceMobileScreen(screen) {
   fScreen = screen;
   renderFabStack();
   renderFinanceMobileScreen();
+  touchLastUpdatedMobile();
 }
 
 function renderFinanceMobileScreen() {
@@ -1045,13 +1409,21 @@ function renderFinanceMobileScreen() {
   else renderFinanceDashboardScreenMobile();
 }
 
-function renderFinanceTopbar(subtitle) {
+/** `showBack` renders a small back button that returns to the Finance
+ *  dashboard — an on-screen escape hatch for sub-screens, so a wrong tap
+ *  doesn't strand someone with only the FAB (which needs expanding first)
+ *  to get back. */
+function renderFinanceTopbar(subtitle, showBack) {
   document.getElementById("m-topbar").innerHTML = `
-    <div>
-      <div class="m-title">FINANCE</div>
-      <div class="m-date">${subtitle || new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
+    <div class="m-topbar-row">
+      ${showBack ? `<button type="button" class="m-topbar-back-btn" id="m-fin-back-btn" aria-label="Back">&#8249;</button>` : ""}
+      <div>
+        <div class="m-title">FINANCE</div>
+        <div class="m-date">${subtitle || new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
+      </div>
     </div>
   `;
+  if (showBack) document.getElementById("m-fin-back-btn").addEventListener("click", () => setFinanceMobileScreen("dashboard"));
 }
 
 /* ============================================
@@ -1072,6 +1444,10 @@ function renderFinanceDashboardScreenMobile() {
 
   document.getElementById("m-main").innerHTML = `
     <div class="m-dash-stats-grid">
+      <div class="m-dash-stat-tile m-balance-tile" id="m-balance-tile" style="grid-column: span 2;">
+        <div class="label">Available balance · tap for actions</div>
+        <div class="value ${mFinanceBalance < 0 ? "danger" : ""}">${formatBalance(mFinanceBalance)}</div>
+      </div>
       <div class="m-dash-stat-tile">
         <div class="label">This month</div>
         <div class="value">${formatMoney(monthTotal)}</div>
@@ -1097,12 +1473,13 @@ function renderFinanceDashboardScreenMobile() {
     </div>
 
     <div class="m-set-list-label">Recent</div>
-    <div id="m-recent-expenses">${renderRecentExpensesList()}</div>
+    <div id="m-recent-expenses">${renderRecentTransactionsList()}</div>
   `;
 
   document.getElementById("m-dash-log-expense").addEventListener("click", () => setFinanceMobileScreen("log"));
   document.getElementById("m-dash-view-due").addEventListener("click", () => setFinanceMobileScreen("due"));
-  wireRecentExpensesDelete();
+  document.getElementById("m-balance-tile").addEventListener("click", openBalanceActionsSheetMobile);
+  wireRecentTransactionsDelete();
 
   financeCalendarStateMobile = { year: now.getFullYear(), month: now.getMonth() };
   wireFinanceCalendar(document.getElementById("m-fin-calendar"), financeCalendarStateMobile, "mobile");
@@ -1112,7 +1489,7 @@ function renderFinanceDashboardScreenMobile() {
    MOBILE — Log expense
    ============================================ */
 function renderFinanceLogScreen() {
-  renderFinanceTopbar();
+  renderFinanceTopbar(undefined, true);
 
   document.getElementById("m-main").innerHTML = `
     <div class="m-stepper-label" style="text-align:left;">Category</div>
@@ -1139,42 +1516,43 @@ function renderFinanceLogScreen() {
     </div>
 
     <div class="m-set-list-label">Recent</div>
-    <div id="m-recent-expenses">${renderRecentExpensesList()}</div>
+    <div id="m-recent-expenses">${renderRecentTransactionsList()}</div>
   `;
 
   wireFinanceLogScreen();
 }
 
-function renderRecentExpensesList() {
-  if (financeRecentExpenses.length === 0) {
-    return `<div class="m-empty" style="padding:30px 0;height:auto;"><p>No expenses logged yet.</p></div>`;
+function renderRecentTransactionsList() {
+  const transactions = mergeTransactions(financeRecentExpenses, financeRecentBalanceEntries, 10);
+  if (transactions.length === 0) {
+    return `<div class="m-empty" style="padding:30px 0;height:auto;"><p>No transactions logged yet.</p></div>`;
   }
-  return financeRecentExpenses
+  return transactions
     .map(
-      (e) => `
+      (t) => `
     <div class="m-set-row">
       <div class="info">
-        <div class="name">${formatMoney(e.amount)} ${categoryBadgeHtml(e.category_id)}</div>
-        <div class="detail">${e.note ? escapeHtmlMobile(e.note) + " · " : ""}${new Date(e.occurred_at).toLocaleDateString()}</div>
+        <div class="name">${formatSignedMoney(t.amount)} ${t.kind === "expense" ? categoryBadgeHtml(t.category_id) : transactionKindBadgeHtml(t.kind)}</div>
+        <div class="detail">${t.note ? escapeHtmlMobile(t.note) + " · " : ""}${new Date(t.occurred_at).toLocaleDateString()}</div>
       </div>
       <div class="m-set-row-actions">
-        <button class="delete-btn" data-expense-id="${e.id}" type="button">Delete</button>
+        <button class="delete-btn" data-table="${t.table}" data-id="${t.id}" type="button">Delete</button>
       </div>
     </div>`
     )
     .join("");
 }
 
-function wireRecentExpensesDelete() {
+function wireRecentTransactionsDelete() {
   document.querySelectorAll("#m-recent-expenses .delete-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("Delete this expense?")) return;
-      const { error } = await supabaseClient.from("finance_expenses").delete().eq("id", btn.dataset.expenseId);
+      if (!confirm("Delete this?")) return;
+      const { error } = await supabaseClient.from(btn.dataset.table).delete().eq("id", btn.dataset.id);
       if (error) {
         alert("Failed to delete: " + error.message);
         return;
       }
-      await loadFinanceRecentExpenses();
+      await refreshFinanceMobileFeeds();
       renderFinanceMobileScreen();
     });
   });
@@ -1190,7 +1568,7 @@ function wireFinanceLogScreen() {
 
   document.getElementById("m-add-category-chip").addEventListener("click", openAddCategorySheetMobile);
   document.getElementById("m-log-expense-btn").addEventListener("click", logExpenseMobile);
-  wireRecentExpensesDelete();
+  wireRecentTransactionsDelete();
 }
 
 async function logExpenseMobile() {
@@ -1199,7 +1577,7 @@ async function logExpenseMobile() {
   const amount = parseFloat(amountInput.value);
 
   if (!amount || amount <= 0) {
-    amountInput.focus();
+    showFieldRequired(amountInput);
     return;
   }
 
@@ -1223,7 +1601,7 @@ async function logExpenseMobile() {
     return;
   }
 
-  await loadFinanceRecentExpenses();
+  await refreshFinanceMobileFeeds();
   renderFinanceLogScreen();
 }
 
@@ -1256,8 +1634,9 @@ function openAddCategorySheetMobile() {
   });
 
   document.getElementById("m-save-category-btn").addEventListener("click", async () => {
-    const name = document.getElementById("m-new-category-name").value.trim();
-    if (!name) return;
+    const nameInput = document.getElementById("m-new-category-name");
+    const name = nameInput.value.trim();
+    if (!name) return showFieldRequired(nameInput);
     const btn = document.getElementById("m-save-category-btn");
     btn.disabled = true;
     btn.textContent = "Saving...";
@@ -1286,7 +1665,7 @@ function openAddCategorySheetMobile() {
    MOBILE — Payments due screen
    ============================================ */
 function renderFinanceDueScreen() {
-  renderFinanceTopbar("Due & upcoming");
+  renderFinanceTopbar("Due & upcoming", true);
 
   const decorated = financePaymentsCache.map((p) => ({ payment: p, status: computePaymentDisplayStatus(p) }));
   const due = decorated.filter((d) => d.status === "due-soon" || d.status === "overdue");
@@ -1476,7 +1855,9 @@ function openAddPaymentSheetMobile() {
     const kind = overlay.querySelector("#m-payment-kind-row .m-chip.active").dataset.kind;
     const interval = overlay.querySelector("#m-payment-recurrence-row .m-chip.active").dataset.interval;
 
-    if (!name || !amount || amount <= 0 || !dueDate) return;
+    if (!name) return showFieldRequired(document.getElementById("m-payment-name"));
+    if (!amount || amount <= 0) return showFieldRequired(document.getElementById("m-payment-amount"));
+    if (!dueDate) return showFieldRequired(document.getElementById("m-payment-due-date"));
 
     const btn = document.getElementById("m-save-payment-btn");
     btn.disabled = true;
@@ -1505,3 +1886,384 @@ function openAddPaymentSheetMobile() {
     renderFinanceMobileScreen();
   });
 }
+
+/* ============================================
+   MOBILE — Balance actions: Add Income / Adjust Balance
+   Reached by tapping the balance tile rather than living in the FAB stack
+   or dashboard quick-actions row — these are occasional actions, so they
+   get a deliberate second tap instead of permanent screen real estate.
+   ============================================ */
+function openBalanceActionsSheetMobile() {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-body">
+        <div class="m-sheet-title">Available balance</div>
+        <div class="m-payment-sheet-amount">${formatBalance(mFinanceBalance)}</div>
+        <div class="m-payment-actions" style="margin-top:18px;">
+          <button type="button" class="m-payment-action-btn paid" id="m-balance-add-income">Add Income</button>
+          <button type="button" class="m-payment-action-btn skip" id="m-balance-adjust">Adjust Balance</button>
+        </div>
+        <button type="button" class="btn-ghost" id="m-balance-recurring-income" style="width:100%;margin-top:10px;padding:9px 0;">Recurring Income</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  document.getElementById("m-balance-add-income").addEventListener("click", () => {
+    overlay.remove();
+    openAddIncomeSheetMobile();
+  });
+  document.getElementById("m-balance-adjust").addEventListener("click", () => {
+    overlay.remove();
+    openAdjustBalanceSheetMobile();
+  });
+  document.getElementById("m-balance-recurring-income").addEventListener("click", () => {
+    overlay.remove();
+    openRecurringIncomeListSheetMobile();
+  });
+}
+
+function openAddIncomeSheetMobile() {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-body">
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Amount (${CURRENCY})</div>
+          <input type="number" step="0.01" min="0.01" id="m-income-amount" inputmode="decimal" autofocus
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Note (optional)</div>
+          <input type="text" id="m-income-note"
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
+      </div>
+      <div class="m-sheet-footer">
+        <button class="m-start-btn" id="m-save-income-btn" style="width:100%;max-width:none;">Add Income</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  document.getElementById("m-save-income-btn").addEventListener("click", async () => {
+    const amountInput = document.getElementById("m-income-amount");
+    const amount = parseFloat(amountInput.value);
+    if (!amount || amount <= 0) return showFieldRequired(amountInput);
+    const btn = document.getElementById("m-save-income-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    beginMutation();
+    const { error } = await supabaseClient.from("finance_balance_entries").insert({
+      kind: "income",
+      amount,
+      note: document.getElementById("m-income-note").value.trim() || null,
+      occurred_at: new Date().toISOString(),
+    });
+    endMutation();
+
+    if (error) {
+      alert("Failed to add income: " + error.message);
+      btn.disabled = false;
+      btn.textContent = "Add Income";
+      return;
+    }
+
+    overlay.remove();
+    await refreshFinanceMobileFeeds();
+    renderFinanceMobileScreen();
+  });
+}
+
+function openAdjustBalanceSheetMobile() {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-body">
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Direction</div>
+          <div class="m-chip-row" id="m-adjustment-direction-row" style="margin-top:8px;">
+            <div class="m-chip active" data-sign="1">Add</div>
+            <div class="m-chip" data-sign="-1">Subtract</div>
+          </div>
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Amount (${CURRENCY})</div>
+          <input type="number" step="0.01" min="0.01" id="m-adjustment-amount" inputmode="decimal" autofocus
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Note (optional)</div>
+          <input type="text" id="m-adjustment-note" placeholder="e.g. Correcting a miscount"
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
+      </div>
+      <div class="m-sheet-footer">
+        <button class="m-start-btn" id="m-save-adjustment-btn" style="width:100%;max-width:none;">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.querySelectorAll("#m-adjustment-direction-row .m-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      overlay.querySelectorAll("#m-adjustment-direction-row .m-chip").forEach((c) => c.classList.toggle("active", c === chip));
+    });
+  });
+
+  document.getElementById("m-save-adjustment-btn").addEventListener("click", async () => {
+    const magnitudeInput = document.getElementById("m-adjustment-amount");
+    const magnitude = parseFloat(magnitudeInput.value);
+    if (!magnitude || magnitude <= 0) return showFieldRequired(magnitudeInput);
+    const sign = parseInt(overlay.querySelector("#m-adjustment-direction-row .m-chip.active").dataset.sign, 10);
+    const btn = document.getElementById("m-save-adjustment-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    beginMutation();
+    const { error } = await supabaseClient.from("finance_balance_entries").insert({
+      kind: "adjustment",
+      amount: magnitude * sign,
+      note: document.getElementById("m-adjustment-note").value.trim() || null,
+      occurred_at: new Date().toISOString(),
+    });
+    endMutation();
+
+    if (error) {
+      alert("Failed to save adjustment: " + error.message);
+      btn.disabled = false;
+      btn.textContent = "Save";
+      return;
+    }
+
+    overlay.remove();
+    await refreshFinanceMobileFeeds();
+    renderFinanceMobileScreen();
+  });
+}
+
+/* ============================================
+   MOBILE — Recurring income: list (hold a row for actions), add/edit sheet.
+   Same hold-for-actions philosophy as the payments Due screen — a stray
+   tap in a scroll never fires Received/Delete by accident.
+   ============================================ */
+function renderRecurringIncomeListHtmlMobile() {
+  if (financeRecurringIncomeCache.length === 0) {
+    return `<div class="m-empty" style="padding:30px 0;height:auto;"><p>No recurring income set up.</p></div>`;
+  }
+  return financeRecurringIncomeCache
+    .map(
+      (r) => `
+    <div class="m-payment-row status-upcoming" data-recurring-id="${r.id}">
+      <div class="m-payment-row-top">
+        <div class="name">${escapeHtmlMobile(r.name)}</div>
+        <div class="m-payment-amount">${formatMoney(r.amount)}</div>
+      </div>
+      <div class="detail">Repeats ${r.recurrence_interval} · Next ${formatDueDate(r.next_due_date)}</div>
+    </div>`
+    )
+    .join("");
+}
+
+async function openRecurringIncomeListSheetMobile() {
+  await loadFinanceRecurringIncomeCache();
+
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.id = "m-recurring-income-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-body">
+        <div class="m-sheet-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>Recurring income</span>
+          <button type="button" class="btn-ghost" id="m-recurring-income-add-btn" style="padding:5px 12px;font-size:11px;">+ Add</button>
+        </div>
+        <div id="m-recurring-income-list" style="margin-top:12px;">${renderRecurringIncomeListHtmlMobile()}</div>
+        <div class="meta-line" style="text-align:center;margin-top:16px;color:var(--text-faint);font-size:11px;">Hold an entry for actions</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  wireRecurringIncomeListSheetMobile();
+
+  document.getElementById("m-recurring-income-add-btn").addEventListener("click", () => {
+    openRecurringIncomeEditSheetMobile();
+  });
+}
+
+function wireRecurringIncomeListSheetMobile() {
+  document.querySelectorAll("#m-recurring-income-list .m-payment-row").forEach((row) => {
+    const rule = financeRecurringIncomeCache.find((r) => r.id === row.dataset.recurringId);
+    if (rule) attachRecurringIncomeLongPress(row, rule);
+  });
+}
+
+function attachRecurringIncomeLongPress(row, rule) {
+  const HOLD_MS = 450;
+  const MOVE_TOLERANCE = 10;
+  let timer = null;
+  let startX = 0;
+  let startY = 0;
+
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  row.addEventListener("pointerdown", (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    timer = setTimeout(() => openRecurringIncomeActionSheetMobile(rule), HOLD_MS);
+  });
+  row.addEventListener("pointermove", (e) => {
+    if (timer && (Math.abs(e.clientX - startX) > MOVE_TOLERANCE || Math.abs(e.clientY - startY) > MOVE_TOLERANCE)) cancel();
+  });
+  row.addEventListener("pointerup", cancel);
+  row.addEventListener("pointercancel", cancel);
+}
+
+function openRecurringIncomeActionSheetMobile(rule) {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-body">
+        <div class="m-sheet-title">${escapeHtmlMobile(rule.name)}</div>
+        <div class="m-payment-sheet-amount">${formatMoney(rule.amount)}</div>
+        <div class="m-payment-actions" style="margin-top:18px;">
+          <button type="button" class="m-payment-action-btn paid" data-action="received">Received</button>
+          <button type="button" class="m-payment-action-btn skip" data-action="edit">Edit</button>
+          <button type="button" class="m-payment-action-btn overdue" data-action="delete">Delete</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.querySelectorAll(".m-payment-action-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      overlay.remove();
+      if (btn.dataset.action === "received") await markRecurringIncomeReceived(rule.id);
+      else if (btn.dataset.action === "edit") openRecurringIncomeEditSheetMobile(rule);
+      else if (confirm("Delete this recurring income?")) await deleteRecurringIncome(rule.id);
+    });
+  });
+}
+
+function openRecurringIncomeEditSheetMobile(existing) {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-body">
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Name</div>
+          <input type="text" id="m-recurring-income-name" autofocus value="${existing ? escapeHtmlMobile(existing.name) : ""}"
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Amount (${CURRENCY})</div>
+          <input type="number" step="0.01" min="0.01" id="m-recurring-income-amount" value="${existing ? existing.amount : ""}"
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Repeats</div>
+          <div class="m-chip-row" id="m-recurring-income-interval-row" style="margin-top:8px;">
+            <div class="m-chip ${existing && existing.recurrence_interval === "weekly" ? "active" : ""}" data-interval="weekly">Weekly</div>
+            <div class="m-chip ${!existing || existing.recurrence_interval === "monthly" ? "active" : ""}" data-interval="monthly">Monthly</div>
+            <div class="m-chip ${existing && existing.recurrence_interval === "yearly" ? "active" : ""}" data-interval="yearly">Yearly</div>
+          </div>
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Expected Income Date</div>
+          <div style="margin-top:8px;">${datePickerFieldHtml("m-recurring-income-due-date", existing ? existing.next_due_date : toIsoDateLocal(new Date()))}</div>
+          ${dueDateQuickPicksHtml("m-recurring-income-due-date")}
+        </div>
+      </div>
+      <div class="m-sheet-footer">
+        <button class="m-start-btn" id="m-save-recurring-income-btn" style="width:100%;max-width:none;">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  wireDatePickerField("m-recurring-income-due-date");
+  wireDueDateQuickPicks(overlay);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.querySelectorAll("#m-recurring-income-interval-row .m-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      overlay.querySelectorAll("#m-recurring-income-interval-row .m-chip").forEach((c) => c.classList.toggle("active", c === chip));
+    });
+  });
+
+  document.getElementById("m-save-recurring-income-btn").addEventListener("click", async () => {
+    const nameInput = document.getElementById("m-recurring-income-name");
+    const amountInput = document.getElementById("m-recurring-income-amount");
+    const name = nameInput.value.trim();
+    const amount = parseFloat(amountInput.value);
+    const dueDate = document.getElementById("m-recurring-income-due-date").value;
+    const interval = overlay.querySelector("#m-recurring-income-interval-row .m-chip.active").dataset.interval;
+
+    if (!name) return showFieldRequired(nameInput);
+    if (!amount || amount <= 0) return showFieldRequired(amountInput);
+
+    const btn = document.getElementById("m-save-recurring-income-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    const payload = { name, amount, recurrence_interval: interval, next_due_date: dueDate };
+
+    beginMutation();
+    const { error } = existing
+      ? await supabaseClient.from("finance_recurring_income").update(payload).eq("id", existing.id)
+      : await supabaseClient.from("finance_recurring_income").insert(payload);
+    endMutation();
+
+    if (error) {
+      alert("Failed to save: " + error.message);
+      btn.disabled = false;
+      btn.textContent = "Save";
+      return;
+    }
+
+    overlay.remove();
+    await loadFinanceRecurringIncomeCache();
+    const listEl = document.getElementById("m-recurring-income-list");
+    if (listEl) {
+      listEl.innerHTML = renderRecurringIncomeListHtmlMobile();
+      wireRecurringIncomeListSheetMobile();
+    }
+  });
+}
+

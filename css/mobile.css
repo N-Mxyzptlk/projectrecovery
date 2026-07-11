@@ -5,6 +5,30 @@
    Tuned for iPhone 14 (390 x 844 CSS px) but scales to any narrow viewport.
    ============================================ */
 
+#mobile-app,
+.m-sheet-overlay,
+.m-app-drawer-overlay,
+.m-fab-stack,
+#m-drawer-handle {
+  /* Long-press is used everywhere for gestures (swipe reveal, hold-for-
+     actions, calendar hold) — without this, a hold anywhere highlights text
+     or pops the OS text-selection/callout menu instead of firing the
+     gesture. Inputs/textareas opt back in below since typing still needs
+     normal selection. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#mobile-app input,
+#mobile-app textarea,
+.m-sheet-overlay input,
+.m-sheet-overlay textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 #mobile-app {
   height: 100vh;
   height: 100dvh; /* iOS Safari: accounts for the address bar collapsing */
@@ -25,6 +49,46 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.m-topbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* On-screen escape hatch for sub-screens (Log Expense, Payments Due,
+   Journal, Workout dashboard) — returns to that app's default screen
+   without needing to expand the FAB stack first. */
+.m-topbar-back-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.m-topbar-back-btn:active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.m-field-error {
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.m-field-invalid {
+  border-color: var(--danger) !important;
 }
 
 .m-title {
@@ -81,6 +145,33 @@
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.m-fab-stack.fully-hidden {
+  display: none;
+}
+
+/* Long-pressing the FAB toggle hides the whole stack via .fully-hidden
+   above; this nub takes its place so it's never gone for good. */
+.m-fab-hidden-nub {
+  position: fixed;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  opacity: 0.5;
+  padding: 0;
+  z-index: 250;
+  transition: opacity 0.15s ease;
+}
+
+.m-fab-hidden-nub:active {
+  opacity: 1;
+  background: var(--accent-dim);
+  border-color: var(--accent);
 }
 
 /* Collapsed: only the toggle handle shows, others are hidden + tucked
@@ -719,14 +810,138 @@
   border-radius: 6px;
 }
 
+.m-dash-recent-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.m-dash-recent-row .info .name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.m-dash-recent-row .info .detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.m-dash-recent-row:active {
+  background: var(--surface-hover);
+}
+
+/* Guitar's per-row Liked/Want-to-play toggles */
+.m-guitar-icon-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.m-guitar-icon-btn.liked-active {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.m-guitar-icon-btn.want-active {
+  color: var(--gold);
+  border-color: rgba(245, 197, 66, 0.4);
+  background: rgba(245, 197, 66, 0.1);
+}
+
+/* Guitar rows — swipe right to delete, same mechanism as the Journal cards */
+.m-guitar-swipe-wrap {
+  position: relative;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.m-guitar-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  touch-action: pan-y;
+}
+
+.guitar-link-icon {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 /* Individual editable sets inside the Journal detail sheet */
 .m-journal-set-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   font-size: 12px;
   color: var(--text-muted);
-  padding: 4px 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.m-journal-set-row:last-child {
+  border-bottom: none;
+}
+
+.m-journal-set-num {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.m-journal-set-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 44px;
+}
+
+.m-journal-set-metric strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.m-journal-set-metric small {
+  font-size: 9px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.m-journal-set-weight strong {
+  color: var(--gold);
+}
+
+.m-journal-set-tags {
+  flex: 1;
+  text-align: right;
 }
 
 .m-journal-set-edit-btn {
@@ -1045,14 +1260,16 @@
 }
 
 .m-payment-action-btn.skip {
-  background: rgba(251, 191, 36, 0.1);
-  border-color: rgba(251, 191, 36, 0.35);
-  color: var(--warning);
+  /* Neutral gray — used for both "Cancel" and "Adjust Balance", neither of
+     which is a warning; yellow here clashed with the gold amount above it. */
+  background: rgba(139, 139, 158, 0.1);
+  border-color: var(--border);
+  color: var(--text-muted);
 }
 
 .m-payment-action-btn.skip:active {
-  background: rgba(251, 191, 36, 0.2);
-  border-color: var(--warning);
+  background: rgba(139, 139, 158, 0.2);
+  border-color: var(--text-muted);
 }
 
 /* ============================================
@@ -1089,6 +1306,19 @@
 
 .m-dash-stat-tile .value.danger {
   color: var(--danger);
+}
+
+.m-balance-tile {
+  cursor: pointer;
+  border-color: rgba(245, 197, 66, 0.3);
+}
+
+.m-balance-tile:active {
+  background: rgba(245, 197, 66, 0.08);
+}
+
+.m-balance-tile .value {
+  font-size: 26px;
 }
 
 .m-dash-quick-actions {
@@ -1187,29 +1417,28 @@
    always-visible edge handle. Slides in over everything, including
    bottom sheets, since switching apps is a global nav action.
    ============================================ */
+/* A slim edge bar rather than an arrow button — sat too close to modal
+   content at the old mid-screen height and looked like a stray UI element.
+   Bottom-left keeps it out of the way of the FAB stack (bottom-right) and
+   still reads as "there's something to pull out" without shouting about it. */
 .m-drawer-handle {
   position: fixed;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 18px;
-  height: 60px;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-left: none;
-  border-radius: 0 10px 10px 0;
-  color: var(--text-faint);
-  font-size: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.35);
+  left: 3px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  width: 5px;
+  height: 46px;
+  background: var(--text-faint);
+  opacity: 0.4;
+  border: none;
+  border-radius: 999px;
+  padding: 0;
   z-index: 260;
+  transition: opacity 0.15s ease, background 0.15s ease;
 }
 
 .m-drawer-handle:active {
-  color: var(--accent);
-  border-color: var(--accent);
+  opacity: 1;
+  background: var(--accent);
 }
 
 .m-app-drawer-overlay {
@@ -1218,7 +1447,7 @@
   background: rgba(0, 0, 0, 0.6);
   z-index: 400;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.14s ease;
 }
 
 .m-app-drawer-overlay.open {
@@ -1233,7 +1462,7 @@
   border-right: 1px solid var(--border);
   padding: calc(env(safe-area-inset-top, 0px) + 24px) 0 20px;
   transform: translateX(-100%);
-  transition: transform 0.22s ease;
+  transition: transform 0.14s ease;
 }
 
 .m-app-drawer-overlay.open .m-app-drawer {

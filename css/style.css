@@ -13,9 +13,15 @@
   --gold: #f5c542;
   --gold-dim: rgba(245, 197, 66, 0.15);
   --energy: #ff5e3a;
-  --text: #e4e4e7;
-  --text-muted: #8b8b9e;
-  --text-faint: #5c5c6e;
+  --text: #ececf5;
+  /* --text-muted/--text-faint are lavender tints of --accent (#6c63ff),
+     not neutral grey — lightening flat grey (R≈G≈B) last time fixed
+     contrast but not the actual complaint: it still reads as washed-out
+     "disabled" grey, not a deliberate color. These are desaturated toward
+     the same hue as the accent purple so secondary/tertiary text feels
+     like part of the theme rather than a default. */
+  --text-muted: #b6aeea; /* ~5.6:1 on --surface */
+  --text-faint: #9d94ca; /* ~4.5:1 on --surface */
   --success: #4ade80;
   --danger: #f87171;
   --warning: #fbbf24;
@@ -598,6 +604,12 @@ input[type="number"] {
   border-color: var(--accent);
 }
 
+.sidebar-footer button.btn-settings:hover,
+.sidebar-footer button.btn-settings.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .sidebar-footer button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -607,13 +619,6 @@ input[type="number"] {
   flex: 1;
   overflow-y: auto;
   padding: 32px 40px;
-}
-
-.last-updated-footer {
-  margin-top: 24px;
-  font-size: 10px;
-  color: var(--text-faint);
-  text-align: right;
 }
 
 .top-tabs {
@@ -642,6 +647,36 @@ input[type="number"] {
   color: var(--text);
   font-weight: 700;
   border-bottom-color: var(--accent);
+}
+
+/* Guitar's client-side filter chips (Catalogue/Liked/Want to Play) reuse
+   .top-tabs for layout but a distinct item class — .top-tab is auto-wired
+   by setupNav() to call switchView(), which these aren't. */
+.filter-tab {
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.filter-tab:hover {
+  color: var(--text);
+}
+
+.filter-tab.active {
+  color: var(--text);
+  font-weight: 700;
+  border-bottom-color: var(--accent);
+}
+
+.filter-tab .count {
+  color: var(--text-faint);
+  font-weight: 500;
+  margin-left: 4px;
 }
 
 .view-header {
@@ -838,6 +873,16 @@ input[type="number"] {
   color: var(--danger);
 }
 
+/* For word/text content (e.g. a category name) rather than a number — the
+   condensed display font and gold tint read fine for digits but strain the
+   eyes on longer words, so this drops back to the normal body font. */
+.stat-card .value.stat-value-text {
+  font-family: inherit;
+  letter-spacing: normal;
+  color: var(--text);
+  font-weight: 600;
+}
+
 .achievement-row {
   display: flex;
   flex-wrap: wrap;
@@ -933,6 +978,13 @@ input[type="number"] {
   gap: 20px;
 }
 
+/* 5th card in a grid that fits 4 per row (at typical desktop widths) —
+   left alone it sits in column 1 with 3 empty columns beside it, which
+   reads as misaligned rather than intentional. Full-width instead. */
+.finance-recurring-income-card {
+  grid-column: 1 / -1;
+}
+
 .chart-wrap {
   height: 260px;
   position: relative;
@@ -1008,6 +1060,12 @@ input[type="number"] {
   opacity: 0.55;
 }
 
+.payment-row-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .payment-row .payment-name {
   font-weight: 600;
   font-size: 14px;
@@ -1039,7 +1097,11 @@ input[type="number"] {
   letter-spacing: 0.04em;
   padding: 3px 9px;
   border-radius: 999px;
-  margin-right: 8px;
+  /* Fixed width so every badge in a list lines up the same, regardless of
+     label length ("Due soon" vs "Upcoming") — the "justified" look. */
+  min-width: 80px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .payment-status-badge.status-upcoming {
@@ -1131,8 +1193,11 @@ input[type="number"] {
 .fin-cal-popover {
   position: fixed;
   z-index: 500;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  /* Raised surface + accent border + shadow so it reads clearly against the
+     dark page background instead of blending into it. */
+  background: var(--surface-raised);
+  border: 1px solid var(--accent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   border-radius: 8px;
   padding: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -1179,6 +1244,8 @@ input[type="number"] {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
+  cursor: default;
+  transition: background 0.12s ease;
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -1192,6 +1259,11 @@ input[type="number"] {
 .fin-cal-cell.has-due {
   color: var(--text);
   font-weight: 600;
+  cursor: pointer;
+}
+
+.fin-cal-cell.has-due:hover {
+  background: var(--accent-dim);
 }
 
 .fin-cal-dot {
@@ -1251,7 +1323,7 @@ input[type="number"] {
 }
 
 .finance-toast .divider {
-  color: var(--border);
+  color: var(--text-faint);
   margin: 0 10px;
 }
 
@@ -1440,6 +1512,10 @@ input[type="number"] {
   border-bottom: none;
 }
 
+.card-row.guitar-row-linked {
+  cursor: pointer;
+}
+
 .card-row .title {
   font-size: 14px;
   font-weight: 600;
@@ -1516,13 +1592,13 @@ input[type="number"] {
 .home-hero {
   position: relative;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 26px 28px;
-  margin-bottom: 20px;
+  margin-bottom: 32px;
   overflow: hidden;
 }
 
@@ -1593,10 +1669,42 @@ input[type="number"] {
 }
 
 .home-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  /* Three independent flexbox columns, not a CSS Grid. This is the actual
+     fix for the recurring dead-space-gap saga: a Grid row is a shared
+     track across every column in that row, so ANY setting (start,
+     stretch, matched caps) was always going to have some failure mode
+     when a widget's real height changed. A plain flex column shares
+     NOTHING with its neighbors — a widget growing only pushes down
+     whatever's below it in its own column (see .home-grid-col), the other
+     columns never move. Widget-to-column assignment is hardcoded in
+     index.html, not computed — that's deliberate, per the user's request
+     for a strict fixed layout. */
+  display: flex;
+  align-items: flex-start;
   gap: 18px;
-  align-items: start;
+}
+
+.home-grid-col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .home-grid {
+    flex-wrap: wrap;
+  }
+  .home-grid-col {
+    flex-basis: calc(50% - 9px);
+  }
+}
+
+@media (max-width: 760px) {
+  .home-grid {
+    flex-direction: column;
+  }
 }
 
 .home-panel {
@@ -1605,11 +1713,63 @@ input[type="number"] {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px 20px;
+  /* Spacing for mobile's plain stacked panels (no gap-providing parent
+     there); cancelled out below inside .home-grid-col, where `gap`
+     already handles it and this would just double up. */
   margin-bottom: 16px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.home-grid > .home-panel {
+.home-panel:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.home-grid-col > .home-panel {
   margin-bottom: 0;
+}
+
+/* Fills out row 2 alongside Weather so every cell in the strict layout is
+   occupied — ~230px tall, matched to Weather's own natural height, which
+   is what keeps this row from reintroducing the dead-space-gap problem.
+   Candidates to eventually replace one of these with (pick based on what
+   you'd actually glance at each morning):
+     - Workout snapshot: days since last session + a "Start Workout" button
+       (reuses computeWorkoutDashboardStats(), already used by the Workout
+       dashboard — no new data plumbing needed).
+     - Guitar snapshot: liked/want-to-play counts + a "practice pick" (a
+       random song from the want-to-play list), links into Guitar.
+     - This month's spend: a single big number pulled from the same query
+       loadFinanceDashboard() already runs, minus the charts.
+     - Quote/tip of the day: zero backend, purely decorative, cheapest to
+       build if you just want the slot to feel finished. */
+.home-panel-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 230px;
+  border-style: dashed;
+  text-align: center;
+}
+
+.home-panel-placeholder .plus {
+  font-size: 22px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.home-panel-placeholder .label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.home-panel-placeholder .hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  max-width: 200px;
 }
 
 .home-panel::before,
@@ -1693,8 +1853,45 @@ input[type="number"] {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 280px;
+  /* Capped and internally scrollable — the widget itself never grows past
+     this no matter how many tasks/payments pile up (each column is its
+     own independent flex stack now, see .home-grid-col, so a widget
+     growing only pushes down what's below it in the SAME column — cross-
+     column height-matching is no longer a concern). Custom slim scrollbar
+     (thin track, accent on hover) instead of the browser default, so it's
+     obvious this list scrolls rather than the widget quietly expanding. */
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.home-todo-list {
+  max-height: 150px;
+}
+
+.home-payment-list {
+  max-height: 200px;
+}
+
+.home-todo-list::-webkit-scrollbar,
+.home-payment-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.home-todo-list::-webkit-scrollbar-track,
+.home-payment-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.home-todo-list::-webkit-scrollbar-thumb,
+.home-payment-list::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 999px;
+}
+
+.home-todo-list::-webkit-scrollbar-thumb:hover,
+.home-payment-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent);
 }
 
 .home-todo-item {
@@ -1759,9 +1956,42 @@ input[type="number"] {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 2px;
+  padding: 9px 2px 9px 8px;
   border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
   font-size: 12px;
+}
+
+/* Priority-coded side line, same colors as the Payments page rows. */
+.home-payment-item.status-due-soon {
+  border-left-color: var(--gold);
+}
+
+.home-payment-item.status-overdue {
+  border-left-color: var(--danger);
+}
+
+.home-payment-item.status-upcoming {
+  border-left-color: var(--success);
+}
+
+.home-payment-item.status-income {
+  border-left-color: var(--success);
+  cursor: pointer;
+}
+
+.home-payment-item.status-income:hover,
+.home-payment-item.status-income:active {
+  background: rgba(74, 222, 128, 0.06);
+}
+
+.payment-status-badge.status-income {
+  background: rgba(74, 222, 128, 0.15);
+  color: var(--success);
+}
+
+.home-payment-amount.income {
+  color: var(--success);
 }
 
 .home-payment-item:last-child {
@@ -1814,10 +2044,168 @@ input[type="number"] {
   letter-spacing: 0.04em;
 }
 
-.home-shortcut-desc {
+/* ============================================
+   Weather widget (Home, desktop only)
+   ============================================ */
+.home-weather-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-weather-location-label {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.home-weather-location-btn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.home-weather-location-btn:hover {
+  color: var(--accent);
+}
+
+.home-weather-location-search {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.home-weather-location-search input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.home-weather-location-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#home-weather-location-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
   margin-top: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 20;
+}
+
+.home-weather-location-result {
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.home-weather-location-result:last-child {
+  border-bottom: none;
+}
+
+.home-weather-location-result:hover {
+  background: var(--surface-hover);
+  color: var(--accent);
+}
+
+.weather-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.weather-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.weather-temp {
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.weather-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+  text-align: right;
+}
+
+.weather-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.weather-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.weather-metric .label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.weather-metric .value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.weather-rain-warning {
+  background: rgba(245, 197, 66, 0.15);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+/* Pulses the whole panel's border/glow yellow — hard to miss without being
+   a full alert-modal for something as low-stakes as "maybe close a window."
+   cursor:pointer is the only hint that double-click dismisses it — the
+   "double-click to dismiss" text in the warning banner carries the rest. */
+.home-panel-weather.rain-warning {
+  animation: weather-rain-pulse 1.8s ease-in-out infinite;
+  cursor: pointer;
+}
+
+@keyframes weather-rain-pulse {
+  0%, 100% {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+  50% {
+    border-color: var(--gold);
+    box-shadow: 0 0 18px rgba(245, 197, 66, 0.5);
+  }
 }
 
 #workouts-selected-count {
@@ -1881,12 +2269,27 @@ input[type="number"] {
 }
 
 .icon-btn.action-cancel {
-  color: var(--warning);
-  border-color: rgba(251, 191, 36, 0.35);
+  /* Neutral gray rather than warning-yellow — the payment amount next to
+     it is already gold, and yellow-on-yellow made Cancel hard to read. */
+  color: var(--text-muted);
+  border-color: var(--border);
 }
 .icon-btn.action-cancel:hover {
-  border-color: var(--warning);
-  background: rgba(251, 191, 36, 0.08);
+  color: var(--text);
+  border-color: var(--text-muted);
+  background: rgba(139, 139, 158, 0.1);
+}
+
+.icon-btn.guitar-liked-active {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.icon-btn.guitar-want-active {
+  color: var(--gold);
+  border-color: rgba(245, 197, 66, 0.4);
+  background: rgba(245, 197, 66, 0.1);
 }
 
 .empty-state {

@@ -7,7 +7,7 @@
 let currentUserId = null;
 let stationsCache = [];   // refreshed on load, reused by routine/workout forms
 let stationStatCharts = {}; // keyed by station id, so we can destroy/recreate on reload
-let currentApp = "home"; // 'home' | 'workout' | 'finance' | 'admin' — which app the sidebar/top-tabs are pointed at
+let currentApp = "home"; // 'home' | 'workout' | 'finance' | 'guitar' | 'admin' — which app the sidebar/top-tabs are pointed at
 
 // Default landing page per app, and the load function each top-tab view maps to.
 const APP_DEFAULT_VIEW = { workout: "dashboard", finance: "findash" };
@@ -35,8 +35,8 @@ function initDesktopApp(session) {
   document.getElementById("workouts-delete-selected-btn").addEventListener("click", deleteSelectedWorkouts);
 
   wireFinanceActions(); // defined in finance.js
+  wireGuitarActions(); // defined in guitar.js
 
-  document.getElementById("last-deployed-text").textContent = LAST_DEPLOYED;
   runConnectivityCheck();
   setInterval(runConnectivityCheck, 60000);
 
@@ -58,7 +58,7 @@ function initDesktopApp(session) {
  *  back where the user was instead of resetting to the workout dashboard. */
 function saveLastLocation() {
   try {
-    const view = currentApp === "admin" || currentApp === "home" ? null : document.querySelector(`#top-tabs-${currentApp} .top-tab.active`)?.dataset.view || null;
+    const view = currentApp === "admin" || currentApp === "home" || currentApp === "guitar" ? null : document.querySelector(`#top-tabs-${currentApp} .top-tab.active`)?.dataset.view || null;
     sessionStorage.setItem("np_lastLocation", JSON.stringify({ app: currentApp, view }));
   } catch {}
 }
@@ -74,6 +74,15 @@ async function runConnectivityCheck() {
 function setupNav() {
   document.querySelectorAll(".app-nav-item").forEach((item) => {
     item.addEventListener("click", () => switchApp(item.dataset.app));
+  });
+
+  const brandLink = document.getElementById("sidebar-brand-home-link");
+  brandLink.addEventListener("click", () => switchApp("home"));
+  brandLink.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      switchApp("home");
+    }
   });
 
   document.querySelectorAll(".top-tab").forEach((tab) => {
@@ -92,11 +101,11 @@ function switchApp(appName, viewName) {
   document.getElementById("app-views-workout").classList.toggle("hidden", appName !== "workout");
   document.getElementById("app-views-finance").classList.toggle("hidden", appName !== "finance");
 
-  if (appName === "admin" || appName === "home") {
+  if (appName === "admin" || appName === "home" || appName === "guitar") {
     document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
     document.getElementById(`view-${appName}`).classList.remove("hidden");
     saveLastLocation();
-    const result = appName === "admin" ? loadAdmin() : loadHomeDashboard();
+    const result = appName === "admin" ? loadAdmin() : appName === "guitar" ? loadGuitarDashboard() : loadHomeDashboard();
     Promise.resolve(result).then(touchLastUpdated);
     return result;
   }
@@ -119,11 +128,19 @@ function switchView(viewName) {
   }
 }
 
-/** Small "Last updated HH:MM:SS" footer at the bottom of the main panel —
- *  stamped whenever the current view's data finishes (re)loading. */
+/** "11 Jul, 3:45 PM" — no year (today's date makes that redundant) and no
+ *  seconds (this is a freshness indicator, not a precision timestamp).
+ *  Shared by desktop's sidebar footer and mobile's Settings sheet. */
+function formatLastUpdated(date) {
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/** Small "Last updated" footer at the bottom of the main panel — stamped
+ *  whenever the current view's data finishes (re)loading. */
 function touchLastUpdated() {
-  const el = document.getElementById("last-updated-footer");
-  if (el) el.textContent = `Last updated ${new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" })}`;
+  const el = document.getElementById("last-deployed-text");
+  if (!el) return;
+  el.textContent = `Last updated ${formatLastUpdated(new Date())}`;
 }
 
 /** Re-fetches whatever view is currently showing, without a page reload —
@@ -138,6 +155,8 @@ async function refreshCurrentView() {
     await Promise.all([loadAdmin(), runConnectivityCheck()]);
   } else if (currentApp === "home") {
     await Promise.all([loadHomeDashboard(), runConnectivityCheck()]);
+  } else if (currentApp === "guitar") {
+    await Promise.all([loadGuitarDashboard(), runConnectivityCheck()]);
   } else {
     const activeTab = document.querySelector(`#top-tabs-${currentApp} .top-tab.active`);
     const viewName = activeTab ? activeTab.dataset.view : APP_DEFAULT_VIEW[currentApp];

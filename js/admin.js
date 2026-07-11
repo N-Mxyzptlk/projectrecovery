@@ -21,6 +21,7 @@ function wireAdminActions() {
   const pwBtn = document.getElementById("admin-change-password-btn");
   const exportBtn = document.getElementById("admin-export-btn");
   const wipeBtn = document.getElementById("admin-wipe-workouts-btn");
+  const wipeAllBtn = document.getElementById("admin-wipe-all-btn");
   const usernameBtn = document.getElementById("admin-save-username-btn");
   const autoLogoutSelect = document.getElementById("admin-auto-logout");
 
@@ -28,12 +29,14 @@ function wireAdminActions() {
   pwBtn.replaceWith(pwBtn.cloneNode(true));
   exportBtn.replaceWith(exportBtn.cloneNode(true));
   wipeBtn.replaceWith(wipeBtn.cloneNode(true));
+  wipeAllBtn.replaceWith(wipeAllBtn.cloneNode(true));
   usernameBtn.replaceWith(usernameBtn.cloneNode(true));
   autoLogoutSelect.replaceWith(autoLogoutSelect.cloneNode(true));
 
   document.getElementById("admin-change-password-btn").addEventListener("click", changePassword);
   document.getElementById("admin-export-btn").addEventListener("click", exportAllData);
   document.getElementById("admin-wipe-workouts-btn").addEventListener("click", wipeWorkoutHistory);
+  document.getElementById("admin-wipe-all-btn").addEventListener("click", wipeAllData);
   document.getElementById("admin-save-username-btn").addEventListener("click", saveUsername);
   document.getElementById("admin-auto-logout").addEventListener("change", saveAutoLogout);
 }
@@ -122,7 +125,7 @@ function formatBytes(bytes) {
 
 async function loadAdminRowCounts() {
   const el = document.getElementById("admin-row-counts");
-  const tables = ["stations", "workouts", "workout_sets", "finance_categories", "finance_payments", "finance_expenses", "todos"];
+  const tables = ["stations", "workouts", "workout_sets", "finance_categories", "finance_payments", "finance_expenses", "finance_balance_entries", "finance_recurring_income", "todos", "guitar_songs"];
 
   try {
     const counts = await Promise.all(
@@ -141,14 +144,17 @@ async function exportAllData() {
   btn.textContent = "Exporting...";
 
   try {
-    const [stations, workouts, sets, financeCategories, financePayments, financeExpenses, todos] = await Promise.all([
+    const [stations, workouts, sets, financeCategories, financePayments, financeExpenses, financeBalanceEntries, financeRecurringIncome, todos, guitarSongs] = await Promise.all([
       supabaseClient.from("stations").select("*"),
       supabaseClient.from("workouts").select("*"),
       supabaseClient.from("workout_sets").select("*"),
       supabaseClient.from("finance_categories").select("*"),
       supabaseClient.from("finance_payments").select("*"),
       supabaseClient.from("finance_expenses").select("*"),
+      supabaseClient.from("finance_balance_entries").select("*"),
+      supabaseClient.from("finance_recurring_income").select("*"),
       supabaseClient.from("todos").select("*"),
+      supabaseClient.from("guitar_songs").select("*"),
     ]);
 
     const backup = {
@@ -160,6 +166,9 @@ async function exportAllData() {
       finance_payments: financePayments.data || [],
       todos: todos.data || [],
       finance_expenses: financeExpenses.data || [],
+      finance_balance_entries: financeBalanceEntries.data || [],
+      finance_recurring_income: financeRecurringIncome.data || [],
+      guitar_songs: guitarSongs.data || [],
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
@@ -200,4 +209,43 @@ async function wipeWorkoutHistory() {
 
   btn.disabled = false;
   btn.textContent = "Delete";
+}
+
+/** Deletes every row in every app table (not the tables themselves, and
+ *  never auth.users — sign-in is untouched). Meant for clearing out mock/
+ *  test data before going to production, so it's deliberately harder to
+ *  trigger by accident than the single-app wipe above: two confirmations,
+ *  the second requiring an exact typed phrase that names what's about to
+ *  happen rather than a generic "DELETE". */
+async function wipeAllData() {
+  if (!confirm("This deletes EVERYTHING in every app — stations, workouts, sets, finance data, to-dos, and your guitar catalogue. Your login is not affected. Continue?")) return;
+
+  const typed = prompt('Type "WIPE ALL DATA" (exactly, all caps) to confirm. This cannot be undone.');
+  if (typed !== "WIPE ALL DATA") {
+    if (typed !== null) alert("Text didn't match — nothing was deleted.");
+    return;
+  }
+
+  const btn = document.getElementById("admin-wipe-all-btn");
+  btn.disabled = true;
+  btn.textContent = "Wiping...";
+
+  // workout_sets, finance_expenses (via source_payment_id), and other
+  // child rows cascade-delete with their parents (see each sql/*.sql
+  // schema), so deleting these top-level tables is enough.
+  const tables = ["workouts", "stations", "finance_payments", "finance_categories", "finance_expenses", "finance_balance_entries", "finance_recurring_income", "todos", "guitar_songs"];
+  const results = await Promise.all(tables.map((t) => supabaseClient.from(t).delete().neq("id", "00000000-0000-0000-0000-000000000000")));
+  const failed = results.map((r, i) => (r.error ? tables[i] : null)).filter(Boolean);
+
+  btn.disabled = false;
+  btn.textContent = "Wipe All";
+
+  if (failed.length > 0) {
+    alert("Some tables failed to clear: " + failed.join(", ") + ". Check the console for details.");
+    console.error(results.filter((r) => r.error).map((r) => r.error));
+  } else {
+    alert("All data wiped. Your login is unchanged.");
+  }
+
+  loadAdminRowCounts();
 }

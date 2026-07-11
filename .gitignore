@@ -18,5 +18,6 @@ Thumbs.db
 # Claude Code files (not shared with the team/repo)
 .claude/
 CLAUDE.md
+IMPORTANT_NOTES.md
 
 alert.mp3
