@@ -250,14 +250,10 @@ async function renderWorkoutDashboardMobile() {
         <div class="value">${stats.totalWorkouts}</div>
       </div>
       <div class="m-dash-stat-tile">
-        <div class="label">This week</div>
-        <div class="value">${stats.thisWeekSessions}</div>
+        <div class="label">PRs this month</div>
+        <div class="value">${stats.prsThisMonth}</div>
       </div>
-      <div class="m-dash-stat-tile">
-        <div class="label">Day streak</div>
-        <div class="value">${stats.streak}</div>
-      </div>
-      <div class="m-dash-stat-tile">
+      <div class="m-dash-stat-tile" style="grid-column: span 2;">
         <div class="label">Biggest gain (30d)</div>
         <div class="value" style="font-size:15px;">${stats.biggestGain ? `${escapeHtmlMobile(stats.biggestGain.name)} +${Math.round(stats.biggestGain.delta * 10) / 10}kg` : "—"}</div>
       </div>

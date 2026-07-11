@@ -42,7 +42,25 @@ function initDesktopApp(session) {
 
   initAutoLogout();
 
-  switchApp("workout");
+  let restoreApp = "workout";
+  let restoreView = null;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem("np_lastLocation") || "null");
+    if (saved && saved.app) {
+      restoreApp = saved.app;
+      restoreView = saved.view;
+    }
+  } catch {}
+  switchApp(restoreApp, restoreView);
+}
+
+/** Remembers the currently-visible app/view so a hard refresh (F5) lands
+ *  back where the user was instead of resetting to the workout dashboard. */
+function saveLastLocation() {
+  try {
+    const view = currentApp === "admin" ? null : document.querySelector(`#top-tabs-${currentApp} .top-tab.active`)?.dataset.view || null;
+    sessionStorage.setItem("np_lastLocation", JSON.stringify({ app: currentApp, view }));
+  } catch {}
 }
 
 async function runConnectivityCheck() {
@@ -63,7 +81,7 @@ function setupNav() {
   });
 }
 
-function switchApp(appName) {
+function switchApp(appName, viewName) {
   currentApp = appName;
 
   document.querySelectorAll(".app-nav-item").forEach((i) => i.classList.toggle("active", i.dataset.app === appName));
@@ -75,16 +93,19 @@ function switchApp(appName) {
   if (appName === "admin") {
     document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
     document.getElementById("view-admin").classList.remove("hidden");
+    saveLastLocation();
     return loadAdmin();
   }
 
-  switchView(APP_DEFAULT_VIEW[appName]);
+  const validViews = Array.from(document.querySelectorAll(`#top-tabs-${appName} .top-tab`)).map((t) => t.dataset.view);
+  switchView(viewName && validViews.includes(viewName) ? viewName : APP_DEFAULT_VIEW[appName]);
 }
 
 function switchView(viewName) {
   document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
   document.getElementById(`view-${viewName}`).classList.remove("hidden");
   document.querySelectorAll(".top-tab").forEach((t) => t.classList.toggle("active", t.dataset.view === viewName));
+  saveLastLocation();
 
   const loader = VIEW_LOADERS[viewName];
   if (loader) return loader();
@@ -138,12 +159,22 @@ function escapeHtml(str) {
    ============================================ */
 async function loadDashboard() {
   renderQuickActions();
-  await Promise.all([loadDashboardStats(), loadRecentWorkouts()]);
+  const el = document.getElementById("dashboard-stats");
+  const recentBox = document.getElementById("dashboard-recent");
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+  recentBox.innerHTML = `<div class="empty-state">Loading...</div>`;
+
+  const stats = await computeWorkoutDashboardStats();
+  renderDashboardStats(stats);
+  await loadRecentWorkouts(stats ? stats.achievementsByWorkout : {});
 }
 
 /** Real signal, not just a mirror of the Workouts list: how much you've
  *  actually been training and where you're improving, at a glance. Shared
- *  by the desktop dashboard and the mobile compact dashboard. */
+ *  by the desktop dashboard and the mobile compact dashboard. Also walks
+ *  each station's session history to flag personal records and session-
+ *  over-session gains, so the recent-workouts list can show what actually
+ *  happened ("Bench Press PR Hit!") instead of a bare set count. */
 async function computeWorkoutDashboardStats() {
   const { data: workouts, error } = await supabaseClient
     .from("workouts")
@@ -157,25 +188,8 @@ async function computeWorkoutDashboardStats() {
 
   const all = workouts || [];
   const totalWorkouts = all.length;
-
   const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 86400000);
-  const thisWeekSessions = all.filter((w) => new Date(w.started_at) >= weekAgo).length;
 
-  // Day streak: consecutive calendar days (walking back from today) with
-  // at least one workout — today not having one yet doesn't break a streak
-  // that's still active as of yesterday.
-  const trainedDays = new Set(all.map((w) => new Date(w.started_at).toDateString()));
-  let streak = 0;
-  const cursor = new Date();
-  if (!trainedDays.has(cursor.toDateString())) cursor.setDate(cursor.getDate() - 1);
-  while (trainedDays.has(cursor.toDateString())) {
-    streak++;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-
-  // Biggest gain: compare each station's last two sessions, only counting
-  // ones still recent enough (30d) to read as "current progress".
   const byStation = {};
   all.forEach((w) => {
     const perStationMax = {};
@@ -187,28 +201,45 @@ async function computeWorkoutDashboardStats() {
     });
     Object.entries(perStationMax).forEach(([stationId, { weight, name }]) => {
       if (!byStation[stationId]) byStation[stationId] = { name, sessions: [] };
-      byStation[stationId].sessions.push({ date: w.started_at, weight });
+      byStation[stationId].sessions.push({ date: w.started_at, weight, workoutId: w.id });
     });
   });
 
   let biggestGain = null;
+  let prsThisMonth = 0;
+  const achievementsByWorkout = {}; // workoutId -> [{ type: 'pr'|'gain', station, amount }]
+
   Object.values(byStation).forEach(({ name, sessions }) => {
-    if (sessions.length < 2) return;
-    const last = sessions[sessions.length - 1];
-    const prev = sessions[sessions.length - 2];
-    if ((now - new Date(last.date)) / 86400000 > 30) return;
-    const delta = last.weight - prev.weight;
-    if (delta > 0 && (!biggestGain || delta > biggestGain.delta)) biggestGain = { name, delta };
+    let maxSoFar = -Infinity;
+    sessions.forEach((session, i) => {
+      const isPR = i > 0 && session.weight > maxSoFar;
+      if (session.weight > maxSoFar) maxSoFar = session.weight;
+      if (i === 0) return; // nothing to compare the very first session to
+
+      const delta = session.weight - sessions[i - 1].weight;
+      const sessionDate = new Date(session.date);
+
+      if (!achievementsByWorkout[session.workoutId]) achievementsByWorkout[session.workoutId] = [];
+      if (isPR) {
+        achievementsByWorkout[session.workoutId].push({ type: "pr", station: name });
+        if (sessionDate.getFullYear() === now.getFullYear() && sessionDate.getMonth() === now.getMonth()) prsThisMonth++;
+      } else if (delta > 0) {
+        achievementsByWorkout[session.workoutId].push({ type: "gain", station: name, amount: delta });
+      }
+
+      // Biggest gain (30d): only the latest session per station counts,
+      // so this reads as "current progress" rather than any past jump.
+      if (i === sessions.length - 1 && delta > 0 && (now - sessionDate) / 86400000 <= 30) {
+        if (!biggestGain || delta > biggestGain.delta) biggestGain = { name, delta };
+      }
+    });
   });
 
-  return { totalWorkouts, thisWeekSessions, streak, biggestGain };
+  return { totalWorkouts, prsThisMonth, biggestGain, achievementsByWorkout };
 }
 
-async function loadDashboardStats() {
+function renderDashboardStats(stats) {
   const el = document.getElementById("dashboard-stats");
-  el.innerHTML = `<div class="empty-state">Loading...</div>`;
-
-  const stats = await computeWorkoutDashboardStats();
   if (!stats) {
     el.innerHTML = `<div class="empty-state">Error loading stats</div>`;
     return;
@@ -220,12 +251,8 @@ async function loadDashboardStats() {
       <div class="value">${stats.totalWorkouts}</div>
     </div>
     <div class="stat-card">
-      <div class="label">This week</div>
-      <div class="value">${stats.thisWeekSessions} session${stats.thisWeekSessions === 1 ? "" : "s"}</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Day streak</div>
-      <div class="value">${stats.streak}</div>
+      <div class="label">PRs this month</div>
+      <div class="value">${stats.prsThisMonth}</div>
     </div>
     <div class="stat-card">
       <div class="label">Biggest gain (30d)</div>
@@ -250,9 +277,22 @@ function renderQuickActions() {
   });
 }
 
-async function loadRecentWorkouts() {
+/** Formats one workout's PR/gain entries (from computeWorkoutDashboardStats)
+ *  into badge labels, e.g. "Bench Press PR Hit!" / "+2.5kg Squat!". */
+function formatWorkoutAchievements(entries) {
+  if (!entries || entries.length === 0) return "";
+  return entries
+    .map((a) =>
+      a.type === "pr"
+        ? `${escapeHtml(a.station)} PR Hit!`
+        : `+${Math.round(a.amount * 10) / 10}kg ${escapeHtml(a.station)}!`
+    )
+    .map((label) => `<span class="achievement-badge">${label}</span>`)
+    .join("");
+}
+
+async function loadRecentWorkouts(achievementsByWorkout) {
   const recentBox = document.getElementById("dashboard-recent");
-  recentBox.innerHTML = `<div class="empty-state">Loading...</div>`;
 
   const { data: workouts, error } = await supabaseClient
     .from("workouts")
@@ -272,15 +312,17 @@ async function loadRecentWorkouts() {
   }
 
   recentBox.innerHTML = workouts
-    .map(
-      (w) => `
+    .map((w) => {
+      const badges = formatWorkoutAchievements((achievementsByWorkout || {})[w.id]);
+      return `
       <div class="card-row">
         <div>
           <div class="title">${escapeHtml(w.name || "Workout")}</div>
           <div class="meta">${new Date(w.started_at).toLocaleDateString()} · ${w.workout_sets.length} set${w.workout_sets.length === 1 ? "" : "s"}${!w.ended_at ? " · in progress" : ""}</div>
+          ${badges ? `<div class="achievement-row">${badges}</div>` : ""}
         </div>
-      </div>`
-    )
+      </div>`;
+    })
     .join("");
 }
 

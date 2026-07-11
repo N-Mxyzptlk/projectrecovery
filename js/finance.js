@@ -51,6 +51,19 @@ function categoryName(id) {
   return c ? c.name : "Uncategorized";
 }
 
+function categoryColor(id) {
+  if (!id) return "#5c5c6e";
+  const c = financeCategoriesCache.find((cat) => cat.id === id);
+  return (c && c.color) || "#6c63ff";
+}
+
+/** Colored category pill, e.g. "Food" in its category's color — same
+ *  labeled-badge treatment as the workout achievement badges. */
+function categoryBadgeHtml(id) {
+  const color = categoryColor(id);
+  return `<span class="category-badge" style="background:${color}22;color:${color};border-color:${color}55;">${escapeHtml(categoryName(id))}</span>`;
+}
+
 /* ============================================
    Payment status — display status is computed from next_due_date /
    reminder_days_before / stored status; the stored status only changes on
@@ -160,7 +173,7 @@ async function markPaymentPaid(paymentId) {
   }
   await refreshFinanceAfterAction();
 
-  showFinanceUndoToast(`${payment.name} has been marked PAID`, async () => {
+  showFinanceUndoToast(`${payment.name} Paid`, async () => {
     beginMutation();
     await supabaseClient.from("finance_expenses").delete().eq("id", expenseRow.id);
     await supabaseClient.from("finance_payments").update({ status: previousStatus, next_due_date: previousDueDate }).eq("id", payment.id);
@@ -182,7 +195,7 @@ async function markPaymentOverdue(paymentId) {
   if (error) return alert("Failed to update payment: " + error.message);
   await refreshFinanceAfterAction();
 
-  showFinanceUndoToast(`${payment.name} has been marked OVERDUE`, async () => {
+  showFinanceUndoToast(`${payment.name} Overdue`, async () => {
     beginMutation();
     await supabaseClient.from("finance_payments").update({ status: previousStatus }).eq("id", paymentId);
     endMutation();
@@ -212,7 +225,7 @@ async function markPaymentCancelled(paymentId) {
   if (error) return alert("Failed to cancel: " + error.message);
   await refreshFinanceAfterAction();
 
-  showFinanceUndoToast(`${payment.name} has been Cancelled`, async () => {
+  showFinanceUndoToast(`${payment.name} Cancelled`, async () => {
     beginMutation();
     await supabaseClient.from("finance_payments").update({ status: previousStatus }).eq("id", paymentId);
     endMutation();
@@ -270,47 +283,199 @@ function wireDueDateQuickPicks(root) {
 
 /* ============================================
    Calendar — compact month grid, dots mark due dates. Shared by the
-   desktop dashboard card and the mobile dashboard screen.
+   desktop dashboard card and the mobile dashboard screen. Supports
+   cycling between months, and per-day due-item lookup (desktop hovers
+   a date to preview it, mobile holds a date) — see wireFinanceCalendar.
    ============================================ */
-function renderFinanceCalendarHtml(payments) {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const firstWeekday = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const dueDays = {};
+function computeDueItemsByDay(payments, year, month) {
+  const map = {};
   payments.forEach((p) => {
     const status = computePaymentDisplayStatus(p);
     if (status === "paid" || status === "cancelled") return;
     const d = new Date(p.next_due_date);
     if (d.getFullYear() === year && d.getMonth() === month) {
       const day = d.getDate();
-      if (!dueDays[day] || statusPriority(status) > statusPriority(dueDays[day])) dueDays[day] = status;
+      if (!map[day]) map[day] = [];
+      map[day].push({ payment: p, status });
     }
   });
+  return map;
+}
+
+function statusPriority(status) {
+  return { upcoming: 1, "due-soon": 2, overdue: 3 }[status] || 0;
+}
+
+function renderFinanceCalendarHtml(payments, year, month) {
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dueItemsByDay = computeDueItemsByDay(payments, year, month);
+  const today = new Date();
 
   const cells = [];
-  for (let i = 0; i < firstWeekday; i++) cells.push(`<div class="fin-cal-cell"></div>`);
+  for (let i = 0; i < firstWeekday; i++) cells.push(`<div class="fin-cal-cell empty"></div>`);
   for (let day = 1; day <= daysInMonth; day++) {
-    const status = dueDays[day];
-    const isToday = day === now.getDate();
+    const items = dueItemsByDay[day] || [];
+    let topStatus = null;
+    items.forEach((it) => {
+      if (!topStatus || statusPriority(it.status) > statusPriority(topStatus)) topStatus = it.status;
+    });
+    const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
     cells.push(`
-      <div class="fin-cal-cell ${isToday ? "today" : ""} ${status ? `has-due status-${status}` : ""}">
+      <div class="fin-cal-cell ${isToday ? "today" : ""} ${topStatus ? `has-due status-${topStatus}` : ""}" data-day="${day}">
         <span>${day}</span>
-        ${status ? `<span class="fin-cal-dot"></span>` : ""}
+        ${topStatus ? `<span class="fin-cal-dot"></span>` : ""}
       </div>`);
   }
 
   return `
-    <div class="fin-cal-header">${new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" })}</div>
+    <div class="fin-cal-header">
+      <button type="button" class="fin-cal-nav" data-dir="-1" aria-label="Previous month">&lsaquo;</button>
+      <span>${new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" })}</span>
+      <button type="button" class="fin-cal-nav" data-dir="1" aria-label="Next month">&rsaquo;</button>
+    </div>
     <div class="fin-cal-weekdays"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div>
     <div class="fin-cal-grid">${cells.join("")}</div>
   `;
 }
 
-function statusPriority(status) {
-  return { upcoming: 1, "due-soon": 2, overdue: 3 }[status] || 0;
+/** Wires nav + per-day interaction for a rendered calendar and keeps it
+ *  re-rendering in place as the user cycles months. `state` is a plain
+ *  {year, month} object the caller owns, so each surface (desktop card,
+ *  mobile dashboard) can cycle independently. `mode` picks the
+ *  interaction: 'desktop' hovers a date (briefly, to avoid flicker while
+ *  scanning across the grid) to preview what's due; 'mobile' holds a
+ *  date, mirroring the payment-row long-press pattern. */
+function wireFinanceCalendar(containerEl, state, mode) {
+  if (!containerEl) return;
+
+  function rerender() {
+    containerEl.innerHTML = renderFinanceCalendarHtml(financePaymentsCache, state.year, state.month);
+    containerEl.querySelectorAll(".fin-cal-nav").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.month += parseInt(btn.dataset.dir, 10);
+        if (state.month < 0) { state.month = 11; state.year--; }
+        else if (state.month > 11) { state.month = 0; state.year++; }
+        rerender();
+      });
+    });
+
+    const dueItemsByDay = computeDueItemsByDay(financePaymentsCache, state.year, state.month);
+    containerEl.querySelectorAll(".fin-cal-cell.has-due").forEach((cell) => {
+      const items = dueItemsByDay[parseInt(cell.dataset.day, 10)] || [];
+      if (mode === "desktop") attachCalendarDayHover(cell, items);
+      else attachCalendarDayHold(cell, items);
+    });
+  }
+
+  rerender();
+}
+
+/* ---- Desktop: hover-and-hold a date to preview what's due ---- */
+let finCalHoverTimer = null;
+let finCalPopoverEl = null;
+
+function attachCalendarDayHover(cell, items) {
+  cell.addEventListener("mouseenter", () => {
+    clearTimeout(finCalHoverTimer);
+    finCalHoverTimer = setTimeout(() => showCalendarPopover(cell, items), 1200);
+  });
+  cell.addEventListener("mouseleave", () => {
+    clearTimeout(finCalHoverTimer);
+    hideCalendarPopover();
+  });
+}
+
+function showCalendarPopover(cell, items) {
+  hideCalendarPopover();
+  const el = document.createElement("div");
+  el.className = "fin-cal-popover";
+  el.innerHTML = items
+    .map(
+      (it) => `
+    <div class="fin-cal-popover-row">
+      <span class="payment-status-badge status-${it.status}">${paymentStatusLabel(it.status)}</span>
+      <span class="name">${escapeHtml(it.payment.name)}</span>
+      <span class="amount">${formatMoney(it.payment.amount)}</span>
+    </div>`
+    )
+    .join("");
+  document.body.appendChild(el);
+
+  const cellRect = cell.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  el.style.left = `${Math.max(8, Math.min(cellRect.left, window.innerWidth - elRect.width - 8))}px`;
+  el.style.top = `${cellRect.bottom + 6}px`;
+  finCalPopoverEl = el;
+}
+
+function hideCalendarPopover() {
+  if (finCalPopoverEl) {
+    finCalPopoverEl.remove();
+    finCalPopoverEl = null;
+  }
+}
+
+/* ---- Mobile: hold a date to see what's due, Apple-Calendar-style ---- */
+function attachCalendarDayHold(cell, items) {
+  if (items.length === 0) return;
+  const HOLD_MS = 450;
+  const MOVE_TOLERANCE = 10;
+  let timer = null;
+  let startX = 0;
+  let startY = 0;
+
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  cell.addEventListener("pointerdown", (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    timer = setTimeout(() => openCalendarDaySheetMobile(cell.dataset.day, items), HOLD_MS);
+  });
+  cell.addEventListener("pointermove", (e) => {
+    if (timer && (Math.abs(e.clientX - startX) > MOVE_TOLERANCE || Math.abs(e.clientY - startY) > MOVE_TOLERANCE)) cancel();
+  });
+  cell.addEventListener("pointerup", cancel);
+  cell.addEventListener("pointercancel", cancel);
+}
+
+function openCalendarDaySheetMobile(day, items) {
+  const overlay = document.createElement("div");
+  overlay.className = "m-sheet-overlay";
+  overlay.innerHTML = `
+    <div class="m-sheet">
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-body">
+        <div class="m-sheet-title">Due on the ${day}${daySuffix(parseInt(day, 10))}</div>
+        <div class="m-cal-day-items">
+          ${items
+            .map(
+              (it) => `
+            <div class="m-cal-day-item">
+              <span class="payment-status-badge status-${it.status}">${paymentStatusLabel(it.status)}</span>
+              <span class="name">${escapeHtmlMobile(it.payment.name)}</span>
+              <span class="amount">${formatMoney(it.payment.amount)}</span>
+            </div>`
+            )
+            .join("")}
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+}
+
+function daySuffix(day) {
+  if (day % 10 === 1 && day !== 11) return "st";
+  if (day % 10 === 2 && day !== 12) return "nd";
+  if (day % 10 === 3 && day !== 13) return "rd";
+  return "th";
 }
 
 /* ============================================
@@ -392,8 +557,30 @@ async function loadFinanceDashboard() {
   renderFinanceCategoryChart(monthExpenses);
   renderFinanceTrendChart(allExpenses);
 
-  const calEl = document.getElementById("finance-calendar");
-  if (calEl) calEl.innerHTML = renderFinanceCalendarHtml(financePaymentsCache);
+  financeCalendarStateDesktop = { year: now.getFullYear(), month: now.getMonth() };
+  wireFinanceCalendar(document.getElementById("finance-calendar"), financeCalendarStateDesktop, "desktop");
+
+  const recentExpenses = [...allExpenses].reverse().slice(0, 8);
+  const recentEl = document.getElementById("finance-dashboard-recent-expenses");
+  if (recentEl) recentEl.innerHTML = renderExpensesCompactListHtml(recentExpenses);
+}
+
+let financeCalendarStateDesktop = null;
+let financeCalendarStateMobile = null;
+
+function renderExpensesCompactListHtml(expenses) {
+  if (expenses.length === 0) return `<div class="empty-state">No expenses logged</div>`;
+  return expenses
+    .map(
+      (e) => `
+    <div class="card-row">
+      <div>
+        <div class="title">${formatMoney(e.amount)} ${categoryBadgeHtml(e.category_id)}</div>
+        <div class="meta">${new Date(e.occurred_at).toLocaleDateString()}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
+      </div>
+    </div>`
+    )
+    .join("");
 }
 
 function renderFinanceQuickActions() {
@@ -516,7 +703,7 @@ async function loadFinanceExpenses() {
       (e) => `
     <div class="card-row">
       <div>
-        <div class="title">${formatMoney(e.amount)} — ${escapeHtml(categoryName(e.category_id))}</div>
+        <div class="title">${formatMoney(e.amount)} ${categoryBadgeHtml(e.category_id)}</div>
         <div class="meta">${new Date(e.occurred_at).toLocaleDateString()}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
       </div>
       <div class="row-actions">
@@ -702,12 +889,12 @@ function renderFinancePaymentsLists() {
 function renderPaymentRow(payment, status) {
   const actionsHtml = status === "due-soon" || status === "overdue"
     ? `
-      <button class="icon-btn" onclick="markPaymentPaid('${payment.id}')">Paid</button>
-      <button class="icon-btn" onclick="markPaymentOverdue('${payment.id}')">Overdue</button>
-      <button class="icon-btn" onclick="markPaymentCancelled('${payment.id}')">Cancel</button>
+      <button class="icon-btn action-paid" onclick="markPaymentPaid('${payment.id}')">Paid</button>
+      <button class="icon-btn action-overdue" onclick="markPaymentOverdue('${payment.id}')">Overdue</button>
+      <button class="icon-btn action-cancel" onclick="markPaymentCancelled('${payment.id}')">Cancel</button>
     `
     : status === "upcoming"
-    ? `<button class="icon-btn" onclick="markPaymentCancelled('${payment.id}')">Cancel</button>`
+    ? `<button class="icon-btn action-cancel" onclick="markPaymentCancelled('${payment.id}')">Cancel</button>`
     : "";
 
   return `
@@ -901,7 +1088,7 @@ function renderFinanceDashboardScreenMobile() {
 
     <div class="m-dash-card">
       <div class="m-dash-card-title">This month</div>
-      ${renderFinanceCalendarHtml(financePaymentsCache)}
+      <div id="m-fin-calendar"></div>
     </div>
 
     <div class="m-set-list-label">Recent</div>
@@ -911,6 +1098,9 @@ function renderFinanceDashboardScreenMobile() {
   document.getElementById("m-dash-log-expense").addEventListener("click", () => setFinanceMobileScreen("log"));
   document.getElementById("m-dash-view-due").addEventListener("click", () => setFinanceMobileScreen("due"));
   wireRecentExpensesDelete();
+
+  financeCalendarStateMobile = { year: now.getFullYear(), month: now.getMonth() };
+  wireFinanceCalendar(document.getElementById("m-fin-calendar"), financeCalendarStateMobile, "mobile");
 }
 
 /* ============================================
@@ -959,8 +1149,8 @@ function renderRecentExpensesList() {
       (e) => `
     <div class="m-set-row">
       <div class="info">
-        <div class="name">${formatMoney(e.amount)}</div>
-        <div class="detail">${escapeHtmlMobile(categoryName(e.category_id))}${e.note ? " · " + escapeHtmlMobile(e.note) : ""} · ${new Date(e.occurred_at).toLocaleDateString()}</div>
+        <div class="name">${formatMoney(e.amount)} ${categoryBadgeHtml(e.category_id)}</div>
+        <div class="detail">${e.note ? escapeHtmlMobile(e.note) + " · " : ""}${new Date(e.occurred_at).toLocaleDateString()}</div>
       </div>
       <div class="m-set-row-actions">
         <button class="delete-btn" data-expense-id="${e.id}" type="button">Delete</button>

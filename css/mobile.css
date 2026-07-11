@@ -1022,21 +1022,37 @@
   opacity: 0.5;
 }
 
-.m-payment-action-btn.paid:active {
-  background: rgba(74, 222, 128, 0.15);
-  border-color: var(--success);
+.m-payment-action-btn.paid {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.35);
   color: var(--success);
 }
 
-.m-payment-action-btn.overdue:active {
-  background: rgba(248, 113, 113, 0.15);
-  border-color: var(--danger);
+.m-payment-action-btn.paid:active {
+  background: rgba(74, 222, 128, 0.2);
+  border-color: var(--success);
+}
+
+.m-payment-action-btn.overdue {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.35);
   color: var(--danger);
 }
 
+.m-payment-action-btn.overdue:active {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: var(--danger);
+}
+
+.m-payment-action-btn.skip {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.35);
+  color: var(--warning);
+}
+
 .m-payment-action-btn.skip:active {
-  background: var(--surface-hover);
-  color: var(--text);
+  background: rgba(251, 191, 36, 0.2);
+  border-color: var(--warning);
 }
 
 /* ============================================
@@ -1135,6 +1151,35 @@
   font-family: var(--font-display);
   font-size: 24px;
   color: var(--gold);
+}
+
+.m-cal-day-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.m-cal-day-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.m-cal-day-item:last-child {
+  border-bottom: none;
+}
+
+.m-cal-day-item .name {
+  flex: 1;
+  color: var(--text);
+}
+
+.m-cal-day-item .amount {
+  color: var(--text-muted);
 }
 
 /* ============================================

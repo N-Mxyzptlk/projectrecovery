@@ -652,6 +652,33 @@ input[type="number"] {
   color: var(--danger);
 }
 
+.achievement-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.achievement-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(74, 222, 128, 0.12);
+  color: var(--success);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.category-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+}
+
 /* ============================================
    Dashboard quick actions
    ============================================ */
@@ -888,11 +915,60 @@ input[type="number"] {
    Finance calendar — compact month grid, dots mark due dates
    ============================================ */
 .fin-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-family: var(--font-display);
   font-size: 15px;
   letter-spacing: 0.03em;
   text-align: center;
   margin-bottom: 10px;
+}
+
+.fin-cal-nav {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fin-cal-nav:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.fin-cal-popover {
+  position: fixed;
+  z-index: 500;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  min-width: 200px;
+  max-width: 280px;
+}
+
+.fin-cal-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  font-size: 12px;
+}
+
+.fin-cal-popover-row .name {
+  flex: 1;
+  color: var(--text);
+}
+
+.fin-cal-popover-row .amount {
+  color: var(--text-muted);
 }
 
 .fin-cal-weekdays,
@@ -1284,6 +1360,33 @@ input[type="number"] {
   color: var(--danger);
   border-color: var(--danger);
   background: rgba(248, 113, 113, 0.08);
+}
+
+.icon-btn.action-paid {
+  color: var(--success);
+  border-color: rgba(74, 222, 128, 0.35);
+}
+.icon-btn.action-paid:hover {
+  border-color: var(--success);
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.icon-btn.action-overdue {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+.icon-btn.action-overdue:hover {
+  border-color: var(--danger);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.icon-btn.action-cancel {
+  color: var(--warning);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+.icon-btn.action-cancel:hover {
+  border-color: var(--warning);
+  background: rgba(251, 191, 36, 0.08);
 }
 
 .empty-state {
