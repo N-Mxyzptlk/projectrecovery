@@ -858,6 +858,12 @@
   background: rgba(245, 197, 66, 0.1);
 }
 
+.m-guitar-icon-btn.setlist-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
 /* Guitar rows — swipe right to delete, same mechanism as the Journal cards */
 .m-guitar-swipe-wrap {
   position: relative;

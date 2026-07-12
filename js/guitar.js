@@ -10,7 +10,10 @@
 // doesn't matter at call time.
 
 let guitarSongsCache = [];
-let gFilter = "all"; // 'all' | 'liked' | 'want' — shared filter state, desktop and mobile read/write the same one
+let gFilter = "all"; // 'all' | 'liked' | 'want' | 'setlist' — shared filter state, desktop and mobile read/write the same one
+let gSearchQuery = ""; // live text search, shared by desktop and mobile
+let gSearchByArtist = false; // toggle: off matches title+artist, on matches artist only
+let gTagFilter = null; // selected tag, or null for "any tag" — combines with gFilter and search rather than replacing them
 
 async function loadGuitarSongsCache() {
   const { data, error } = await supabaseClient.from("guitar_songs").select("*").order("created_at", { ascending: false });
@@ -19,43 +22,163 @@ async function loadGuitarSongsCache() {
 }
 
 function filterGuitarSongs(songs, filter) {
-  if (filter === "liked") return songs.filter((s) => s.is_liked);
-  if (filter === "want") return songs.filter((s) => s.is_want_to_play);
-  return songs;
+  let result = songs;
+  if (filter === "liked") result = result.filter((s) => s.is_liked);
+  else if (filter === "want") result = result.filter((s) => s.is_want_to_play);
+  else if (filter === "setlist") result = result.filter((s) => s.in_setlist);
+  if (gTagFilter) result = result.filter((s) => (s.tags || []).includes(gTagFilter));
+  return result;
+}
+
+function distinctGuitarTags() {
+  const tags = new Set();
+  guitarSongsCache.forEach((s) => (s.tags || []).forEach((t) => tags.add(t)));
+  return [...tags].sort((a, b) => a.localeCompare(b));
+}
+
+/** "acoustic, fingerstyle, , Acoustic" -> ["acoustic", "fingerstyle"] —
+ *  trims, drops empties, and dedupes case-insensitively (keeping the first
+ *  casing seen) so "Acoustic" and "acoustic" don't become two tags. */
+function parseGuitarTagsInput(raw) {
+  const seen = new Set();
+  const result = [];
+  raw.split(",").forEach((part) => {
+    const tag = part.trim();
+    if (!tag) return;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(tag);
+  });
+  return result;
+}
+
+function applyGuitarSearch(songs, query, byArtist) {
+  const q = query.trim().toLowerCase();
+  if (!q) return songs;
+  return songs.filter((s) =>
+    byArtist ? (s.artist || "").toLowerCase().includes(q) : s.title.toLowerCase().includes(q) || (s.artist || "").toLowerCase().includes(q)
+  );
+}
+
+function distinctGuitarArtists(query) {
+  const q = (query || "").trim().toLowerCase();
+  const names = new Set();
+  guitarSongsCache.forEach((s) => {
+    if (s.artist) names.add(s.artist);
+  });
+  let list = [...names].sort((a, b) => a.localeCompare(b));
+  if (q) list = list.filter((a) => a.toLowerCase().includes(q));
+  return list.slice(0, 8);
+}
+
+/** Own dropdown of already-logged artist names, built and styled by us
+ *  instead of the browser's native autofill-from-history suggestions
+ *  (which can't be restyled and surface old, possibly stale, entries).
+ *  Used on the Artist field (consistent spelling when adding songs) and on
+ *  the search bar in "by artist" mode (quick pick to filter). `onlyWhen`
+ *  lets a caller gate whether the dropdown should appear at all. */
+function attachArtistAutocomplete(inputEl, { onlyWhen } = {}) {
+  let dropdownEl = null;
+
+  function closeDropdown() {
+    if (dropdownEl) {
+      dropdownEl.remove();
+      dropdownEl = null;
+    }
+  }
+
+  function openDropdown() {
+    if (onlyWhen && !onlyWhen()) return closeDropdown();
+    const matches = distinctGuitarArtists(inputEl.value);
+    closeDropdown();
+    if (matches.length === 0) return;
+
+    dropdownEl = document.createElement("div");
+    dropdownEl.className = "guitar-autocomplete-dropdown";
+    dropdownEl.innerHTML = matches.map((name) => `<div class="guitar-autocomplete-item">${escapeHtml(name)}</div>`).join("");
+
+    const rect = inputEl.getBoundingClientRect();
+    dropdownEl.style.left = `${rect.left}px`;
+    dropdownEl.style.top = `${rect.bottom + 4}px`;
+    dropdownEl.style.width = `${rect.width}px`;
+    document.body.appendChild(dropdownEl);
+
+    dropdownEl.querySelectorAll(".guitar-autocomplete-item").forEach((item, i) => {
+      // mousedown (not click) fires before the input's blur, so the value
+      // still lands before closeDropdown tears the list down.
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        inputEl.value = matches[i];
+        inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+        closeDropdown();
+      });
+    });
+  }
+
+  inputEl.addEventListener("input", openDropdown);
+  inputEl.addEventListener("focus", openDropdown);
+  inputEl.addEventListener("blur", () => setTimeout(closeDropdown, 120));
+}
+
+/** Tag filter + search combined — the one list both desktop and mobile
+ *  should actually render. */
+function visibleGuitarSongs() {
+  return applyGuitarSearch(filterGuitarSongs(guitarSongsCache, gFilter), gSearchQuery, gSearchByArtist);
 }
 
 async function toggleGuitarFlag(songId, field) {
   const song = guitarSongsCache.find((s) => s.id === songId);
   if (!song) return;
   const { error } = await supabaseClient.from("guitar_songs").update({ [field]: !song[field] }).eq("id", songId);
-  if (error) return alert("Failed to update: " + error.message);
+  if (error) return uiAlert("Failed to update: " + error.message);
   await refreshGuitarAfterAction();
 }
 
 async function deleteGuitarSong(id) {
-  if (!confirm("Delete this song from your catalogue?")) return;
+  if (!(await uiConfirm("Delete this song from your catalogue?"))) return;
   const { error } = await supabaseClient.from("guitar_songs").delete().eq("id", id);
-  if (error) return alert("Failed to delete: " + error.message);
+  if (error) return uiAlert("Failed to delete: " + error.message);
   await refreshGuitarAfterAction();
 }
 
-/** "Clear All" is scoped to whatever filter is currently showing: on the
- *  full catalogue it deletes every song outright; on Liked/Want to Play it
- *  only clears that tag, since taste changes but the catalogue itself is
- *  still worth keeping. Shared by the desktop button and the mobile one. */
+/** "Clear All" only exists on Liked/Want to Play — it clears that tag from
+ *  every song showing it, songs stay in the catalogue. There's no
+ *  catalogue-wide clear at all: deleting the whole catalogue outright is
+ *  destructive enough that it shouldn't be a one-click action here (use
+ *  per-song Delete instead). Shared by the desktop button and the mobile one. */
 async function clearAllGuitar() {
-  if (gFilter === "all") {
-    if (!confirm("Delete your ENTIRE song catalogue? This cannot be undone.")) return;
-    const { error } = await supabaseClient.from("guitar_songs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) return alert("Failed to clear: " + error.message);
-  } else {
-    const field = gFilter === "liked" ? "is_liked" : "is_want_to_play";
-    const label = gFilter === "liked" ? "Liked" : "Want to Play";
-    if (!confirm(`Clear your entire "${label}" list? Songs stay in your catalogue.`)) return;
-    const { error } = await supabaseClient.from("guitar_songs").update({ [field]: false }).eq(field, true);
-    if (error) return alert("Failed to clear: " + error.message);
-  }
+  if (gFilter === "all") return;
+  const field = gFilter === "liked" ? "is_liked" : gFilter === "want" ? "is_want_to_play" : "in_setlist";
+  const label = gFilter === "liked" ? "Liked" : gFilter === "want" ? "Want to Play" : "Setlist";
+  if (!(await uiConfirm(`Clear your entire "${label}" list? Songs stay in your catalogue.`))) return;
+  const { error } = await supabaseClient.from("guitar_songs").update({ [field]: false }).eq(field, true);
+  if (error) return uiAlert("Failed to clear: " + error.message);
   await refreshGuitarAfterAction();
+}
+
+/** Every song currently in the setlist, regardless of any active tag
+ *  filter or search text — "Load Setlist" opens the whole thing, not just
+ *  whatever happens to be visible under the current filters. */
+function guitarSongsInSetlist() {
+  return guitarSongsCache.filter((s) => s.in_setlist);
+}
+
+/** Opens every setlist song's link in its own new tab so a play session
+ *  can just Alt/Cmd-Tab between them instead of hunting through the
+ *  catalogue mid-session. */
+async function loadGuitarSetlist() {
+  const setlist = guitarSongsInSetlist();
+  const withLinks = setlist.filter((s) => s.link);
+
+  if (setlist.length === 0) return uiAlert("Your setlist is empty — add songs to it first.");
+  if (withLinks.length === 0) return uiAlert("No songs in your setlist have a saved link yet.");
+
+  withLinks.forEach((s) => window.open(s.link, "_blank"));
+
+  if (withLinks.length < setlist.length) {
+    await uiAlert(`Opened ${withLinks.length} of ${setlist.length} songs — the rest have no link saved.`);
+  }
 }
 
 /** Re-renders whichever shell (desktop and/or mobile) is currently showing
@@ -84,16 +207,25 @@ async function loadGuitarDashboard() {
 function renderGuitarFilterTabs() {
   const box = document.getElementById("guitar-filter-tabs");
   if (!box) return;
+  // Counts respect the current tag filter (via filterGuitarSongs), so
+  // switching tags updates all three tab counts together.
   const counts = {
-    all: guitarSongsCache.length,
-    liked: guitarSongsCache.filter((s) => s.is_liked).length,
-    want: guitarSongsCache.filter((s) => s.is_want_to_play).length,
+    all: filterGuitarSongs(guitarSongsCache, "all").length,
+    liked: filterGuitarSongs(guitarSongsCache, "liked").length,
+    want: filterGuitarSongs(guitarSongsCache, "want").length,
+    setlist: filterGuitarSongs(guitarSongsCache, "setlist").length,
   };
   box.innerHTML = `
     <div class="filter-tab ${gFilter === "all" ? "active" : ""}" data-filter="all">Catalogue <span class="count">${counts.all}</span></div>
     <div class="filter-tab ${gFilter === "liked" ? "active" : ""}" data-filter="liked">Liked <span class="count">${counts.liked}</span></div>
     <div class="filter-tab ${gFilter === "want" ? "active" : ""}" data-filter="want">Want to Play <span class="count">${counts.want}</span></div>
+    <div class="filter-tab ${gFilter === "setlist" ? "active" : ""}" data-filter="setlist">Setlist <span class="count">${counts.setlist}</span></div>
   `;
+  const clearAllBtn = document.getElementById("guitar-clear-all-btn");
+  if (clearAllBtn) clearAllBtn.classList.toggle("hidden", gFilter === "all");
+  const loadSetlistBtn = document.getElementById("guitar-load-setlist-btn");
+  if (loadSetlistBtn) loadSetlistBtn.classList.toggle("hidden", gFilter !== "setlist");
+
   box.querySelectorAll(".filter-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       gFilter = tab.dataset.filter;
@@ -101,19 +233,56 @@ function renderGuitarFilterTabs() {
       renderGuitarSongsList();
     });
   });
+
+  renderGuitarTagFilterRow();
+}
+
+/** Tag chips — an additional filter dimension that combines with the
+ *  Catalogue/Liked/Want tab and the search box rather than replacing
+ *  either. Clicking the active tag again clears it (toggle, same
+ *  convention as the "By Artist" search toggle). */
+function renderGuitarTagFilterRow() {
+  const box = document.getElementById("guitar-tag-filter-row");
+  if (!box) return;
+  const tags = distinctGuitarTags();
+  if (tags.length === 0) {
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = tags
+    .map((tag) => `<div class="filter-tag-chip ${gTagFilter === tag ? "active" : ""}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</div>`)
+    .join("");
+  box.querySelectorAll(".filter-tag-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      gTagFilter = gTagFilter === chip.dataset.tag ? null : chip.dataset.tag;
+      renderGuitarFilterTabs();
+      renderGuitarSongsList();
+    });
+  });
+}
+
+/** Shared empty-state copy for the song list, desktop and mobile alike. */
+function guitarEmptyStateText() {
+  if (gSearchQuery.trim().length > 0) return { big: "No matches", p: "Try a different search term." };
+  if (gFilter === "all") return { big: "No songs yet", p: "Add a song to start your catalogue." };
+  if (gFilter === "liked") return { big: "No liked songs", p: "Tag a song from the catalogue to see it here." };
+  if (gFilter === "want") return { big: "Nothing on your want-to-play list", p: "Tag a song from the catalogue to see it here." };
+  return { big: "Setlist is empty", p: "Tag a song from the catalogue to add it to your setlist." };
 }
 
 function renderGuitarSongsList() {
   const listEl = document.getElementById("guitar-songs-list");
   if (!listEl) return;
-  const songs = filterGuitarSongs(guitarSongsCache, gFilter);
+  const songs = visibleGuitarSongs();
 
   if (songs.length === 0) {
+    const { big, p } = guitarEmptyStateText();
+    const searching = gSearchQuery.trim().length > 0;
     listEl.innerHTML = `
       <div class="empty-state">
-        <div class="big">${gFilter === "all" ? "No songs yet" : gFilter === "liked" ? "No liked songs" : "Nothing on your want-to-play list"}</div>
-        <p>${gFilter === "all" ? "Add a song to start your catalogue." : "Tag a song from the catalogue to see it here."}</p>
-        ${gFilter === "all" ? `<button class="btn-accent" onclick="openAddSongModal()">+ Add song</button>` : ""}
+        <div class="big">${big}</div>
+        <p>${p}</p>
+        ${!searching && gFilter === "all" ? `<button class="btn-accent" onclick="openAddSongModal()">+ Add song</button>` : ""}
       </div>`;
     return;
   }
@@ -122,16 +291,26 @@ function renderGuitarSongsList() {
   wireGuitarSongRows();
 }
 
+/** Small muted pills for a song's tags — reused by desktop and mobile.
+ *  `escapeFn` lets each caller pass its own escaper (escapeHtml vs
+ *  escapeHtmlMobile). */
+function guitarTagsHtml(song, escapeFn) {
+  if (!song.tags || song.tags.length === 0) return "";
+  return `<div class="guitar-tag-list">${song.tags.map((t) => `<span class="guitar-tag-badge">${escapeFn(t)}</span>`).join("")}</div>`;
+}
+
 function renderGuitarSongRow(song) {
   return `
     <div class="card-row ${song.link ? "guitar-row-linked" : ""}" data-song-id="${song.id}" ${song.link ? 'title="Double-click to open link"' : ""}>
       <div>
         <div class="title">${escapeHtml(song.title)}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</div>
         <div class="meta">${song.artist ? escapeHtml(song.artist) : "Unknown artist"}${song.note ? " · " + escapeHtml(song.note) : ""}</div>
+        ${guitarTagsHtml(song, escapeHtml)}
       </div>
       <div class="row-actions">
         <button class="icon-btn guitar-toggle-liked ${song.is_liked ? "guitar-liked-active" : ""}" data-song-id="${song.id}" title="Liked">&#9825;</button>
         <button class="icon-btn guitar-toggle-want ${song.is_want_to_play ? "guitar-want-active" : ""}" data-song-id="${song.id}" title="Want to play">&#9734;</button>
+        <button class="icon-btn guitar-toggle-setlist ${song.in_setlist ? "guitar-setlist-active" : ""}" data-song-id="${song.id}" title="Setlist">&#9835;</button>
         <button class="icon-btn" onclick="event.stopPropagation(); openAddSongModal('${song.id}')">Edit</button>
         <button class="icon-btn danger" onclick="event.stopPropagation(); deleteGuitarSong('${song.id}')">Delete</button>
       </div>
@@ -151,6 +330,12 @@ function wireGuitarSongRows() {
       toggleGuitarFlag(btn.dataset.songId, "is_want_to_play");
     });
   });
+  document.querySelectorAll(".guitar-toggle-setlist").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleGuitarFlag(btn.dataset.songId, "in_setlist");
+    });
+  });
   document.querySelectorAll("#guitar-songs-list .card-row[data-song-id]").forEach((row) => {
     row.addEventListener("dblclick", () => {
       const song = guitarSongsCache.find((s) => s.id === row.dataset.songId);
@@ -162,6 +347,21 @@ function wireGuitarSongRows() {
 function wireGuitarActions() {
   document.getElementById("add-song-btn").addEventListener("click", () => openAddSongModal());
   document.getElementById("guitar-clear-all-btn").addEventListener("click", clearAllGuitar);
+  document.getElementById("guitar-load-setlist-btn").addEventListener("click", loadGuitarSetlist);
+
+  const searchInput = document.getElementById("guitar-search-input");
+  searchInput.addEventListener("input", (e) => {
+    gSearchQuery = e.target.value;
+    renderGuitarSongsList();
+  });
+  attachArtistAutocomplete(searchInput, { onlyWhen: () => gSearchByArtist });
+
+  const artistToggle = document.getElementById("guitar-search-artist-toggle");
+  artistToggle.addEventListener("click", () => {
+    gSearchByArtist = !gSearchByArtist;
+    artistToggle.classList.toggle("active", gSearchByArtist);
+    renderGuitarSongsList();
+  });
 }
 
 function openAddSongModal(songId) {
@@ -172,19 +372,23 @@ function openAddSongModal(songId) {
     <form id="song-form">
       <div class="field">
         <label>Title</label>
-        <input type="text" id="song-title" required autofocus value="${existing ? escapeHtml(existing.title) : ""}" />
+        <input type="text" id="song-title" required autofocus autocomplete="off" value="${existing ? escapeHtml(existing.title) : ""}" />
       </div>
       <div class="field">
         <label>Artist</label>
-        <input type="text" id="song-artist" value="${existing ? escapeHtml(existing.artist || "") : ""}" />
+        <input type="text" id="song-artist" autocomplete="off" value="${existing ? escapeHtml(existing.artist || "") : ""}" />
       </div>
       <div class="field">
         <label>Link</label>
-        <input type="url" id="song-link" value="${existing ? escapeHtml(existing.link || "") : ""}" />
+        <input type="url" id="song-link" autocomplete="off" value="${existing ? escapeHtml(existing.link || "") : ""}" />
       </div>
       <div class="field">
         <label>Note</label>
-        <input type="text" id="song-note" value="${existing ? escapeHtml(existing.note || "") : ""}" />
+        <input type="text" id="song-note" autocomplete="off" value="${existing ? escapeHtml(existing.note || "") : ""}" />
+      </div>
+      <div class="field">
+        <label>Tags (comma separated)</label>
+        <input type="text" id="song-tags" autocomplete="off" placeholder="e.g. acoustic, fingerstyle" value="${existing ? escapeHtml((existing.tags || []).join(", ")) : ""}" />
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
@@ -192,6 +396,8 @@ function openAddSongModal(songId) {
       </div>
     </form>
   `);
+
+  attachArtistAutocomplete(document.getElementById("song-artist"));
 
   document.getElementById("song-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -203,6 +409,7 @@ function openAddSongModal(songId) {
       artist: document.getElementById("song-artist").value.trim() || null,
       link: document.getElementById("song-link").value.trim() || null,
       note: document.getElementById("song-note").value.trim() || null,
+      tags: parseGuitarTagsInput(document.getElementById("song-tags").value),
     };
 
     const { error } = existing
@@ -210,7 +417,7 @@ function openAddSongModal(songId) {
       : await supabaseClient.from("guitar_songs").insert(payload);
 
     if (error) {
-      alert(`Failed to ${existing ? "save" : "add"} song: ` + error.message);
+      await uiAlert(`Failed to ${existing ? "save" : "add"} song: ` + error.message);
       return;
     }
     closeModal();
@@ -235,34 +442,66 @@ function renderGuitarMobileScreen() {
     </div>
   `;
 
-  const songs = filterGuitarSongs(guitarSongsCache, gFilter);
+  const songs = visibleGuitarSongs();
+  const tagCount = filterGuitarSongs(guitarSongsCache, gFilter).length; // unaffected by search text — clear-all always clears the whole tag
+
+  const tags = distinctGuitarTags();
 
   document.getElementById("m-main").innerHTML = `
     <div class="m-chip-row" id="m-guitar-filter-row">
       <div class="m-chip ${gFilter === "all" ? "active" : ""}" data-filter="all">Catalogue</div>
       <div class="m-chip ${gFilter === "liked" ? "active" : ""}" data-filter="liked">Liked</div>
       <div class="m-chip ${gFilter === "want" ? "active" : ""}" data-filter="want">Want to Play</div>
+      <div class="m-chip ${gFilter === "setlist" ? "active" : ""}" data-filter="setlist">Setlist</div>
     </div>
 
-    <div class="m-set-list-label" style="display:flex;justify-content:space-between;align-items:center;">
+    ${tags.length > 0
+      ? `<div class="m-chip-row" id="m-guitar-tag-filter-row">
+          ${tags.map((t) => `<div class="m-chip filter-tag-chip ${gTagFilter === t ? "active" : ""}" data-tag="${escapeHtmlMobile(t)}">${escapeHtmlMobile(t)}</div>`).join("")}
+        </div>`
+      : ""}
+
+    <div style="display:flex;gap:8px;margin:10px 0;">
+      <input type="text" id="m-guitar-search-input" autocomplete="off" placeholder="Search songs..." value="${escapeHtmlMobile(gSearchQuery)}"
+             style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 12px;font-size:13px;" />
+      <button type="button" class="m-chip ${gSearchByArtist ? "active" : ""}" id="m-guitar-search-artist-toggle">By Artist</button>
+    </div>
+
+    <div class="m-set-list-label" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
       <span>${songs.length} song${songs.length === 1 ? "" : "s"}</span>
       <div style="display:flex;gap:8px;">
         <button type="button" class="btn-ghost" id="m-guitar-add-btn" style="padding:5px 12px;font-size:11px;">+ Add Songs</button>
-        ${songs.length > 0 ? `<button type="button" class="btn-ghost" id="m-guitar-clear-all-btn" style="padding:5px 12px;font-size:11px;">Clear All</button>` : ""}
+        ${gFilter === "setlist" ? `<button type="button" class="btn-ghost" id="m-guitar-load-setlist-btn" style="padding:5px 12px;font-size:11px;">Load Setlist</button>` : ""}
+        ${tagCount > 0 && gFilter !== "all" ? `<button type="button" class="btn-ghost" id="m-guitar-clear-all-btn" style="padding:5px 12px;font-size:11px;">Clear All</button>` : ""}
       </div>
     </div>
 
-    <div id="m-guitar-list">
-      ${songs.length === 0
-        ? `<div class="m-empty" style="padding:40px 0;height:auto;">
-            <div class="big">${gFilter === "all" ? "No songs yet" : gFilter === "liked" ? "No liked songs" : "Nothing to play yet"}</div>
-            <p>${gFilter === "all" ? "Tap Add Songs to start." : "Tag a song from the catalogue."}</p>
-          </div>`
-        : songs.map((s) => renderGuitarSongRowMobile(s)).join("")}
-    </div>
+    <div id="m-guitar-list">${renderGuitarMobileListInner(songs)}</div>
   `;
 
   wireGuitarMobileScreen();
+}
+
+function renderGuitarMobileListInner(songs) {
+  if (songs.length === 0) {
+    const { big, p } = guitarEmptyStateText();
+    return `<div class="m-empty" style="padding:40px 0;height:auto;">
+      <div class="big">${big}</div>
+      <p>${p}</p>
+    </div>`;
+  }
+  return songs.map((s) => renderGuitarSongRowMobile(s)).join("");
+}
+
+/** Re-renders just the song list + its count label, leaving the search
+ *  input's own DOM node untouched so typing doesn't lose focus/cursor
+ *  position on every keystroke. */
+function renderGuitarMobileListOnly() {
+  const songs = visibleGuitarSongs();
+  document.getElementById("m-guitar-list").innerHTML = renderGuitarMobileListInner(songs);
+  const countEl = document.querySelector("#m-main .m-set-list-label span");
+  if (countEl) countEl.textContent = `${songs.length} song${songs.length === 1 ? "" : "s"}`;
+  wireGuitarMobileListRows();
 }
 
 /** Swipe right reveals Delete, same gesture as the Journal cards — swiping
@@ -276,10 +515,12 @@ function renderGuitarSongRowMobile(song) {
         <div class="info">
           <div class="name">${escapeHtmlMobile(song.title)}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</div>
           <div class="detail">${song.artist ? escapeHtmlMobile(song.artist) : "Unknown artist"}${song.note ? " · " + escapeHtmlMobile(song.note) : ""}</div>
+          ${guitarTagsHtml(song, escapeHtmlMobile)}
         </div>
         <div class="m-set-row-actions">
           <button class="m-guitar-icon-btn ${song.is_liked ? "liked-active" : ""}" data-action="liked" data-song-id="${song.id}" type="button">&#9825;</button>
           <button class="m-guitar-icon-btn ${song.is_want_to_play ? "want-active" : ""}" data-action="want" data-song-id="${song.id}" type="button">&#9734;</button>
+          <button class="m-guitar-icon-btn ${song.in_setlist ? "setlist-active" : ""}" data-action="setlist" data-song-id="${song.id}" type="button" title="Setlist">&#9835;</button>
           <button class="m-guitar-icon-btn" data-action="edit" data-song-id="${song.id}" type="button">&#9998;</button>
         </div>
       </div>
@@ -294,11 +535,41 @@ function wireGuitarMobileScreen() {
     });
   });
 
+  document.querySelectorAll("#m-guitar-tag-filter-row .filter-tag-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      gTagFilter = gTagFilter === chip.dataset.tag ? null : chip.dataset.tag;
+      renderGuitarMobileScreen();
+    });
+  });
+
   document.getElementById("m-guitar-add-btn").addEventListener("click", openAddSongSheetMobile);
 
   const clearBtn = document.getElementById("m-guitar-clear-all-btn");
   if (clearBtn) clearBtn.addEventListener("click", clearAllGuitar);
 
+  const loadSetlistBtn = document.getElementById("m-guitar-load-setlist-btn");
+  if (loadSetlistBtn) loadSetlistBtn.addEventListener("click", loadGuitarSetlist);
+
+  const searchInput = document.getElementById("m-guitar-search-input");
+  searchInput.addEventListener("input", (e) => {
+    gSearchQuery = e.target.value;
+    renderGuitarMobileListOnly();
+  });
+  attachArtistAutocomplete(searchInput, { onlyWhen: () => gSearchByArtist });
+
+  const artistToggle = document.getElementById("m-guitar-search-artist-toggle");
+  artistToggle.addEventListener("click", () => {
+    gSearchByArtist = !gSearchByArtist;
+    renderGuitarMobileScreen();
+  });
+
+  wireGuitarMobileListRows();
+}
+
+/** Row-level listeners only (like/want/edit buttons + swipe-to-delete) —
+ *  split out from wireGuitarMobileScreen so a search keystroke can refresh
+ *  just the list without rebuilding (and defocusing) the search input. */
+function wireGuitarMobileListRows() {
   document.querySelectorAll("#m-guitar-list .m-guitar-icon-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -307,7 +578,7 @@ function wireGuitarMobileScreen() {
         if (song) openAddSongSheetMobile(song);
         return;
       }
-      const field = btn.dataset.action === "liked" ? "is_liked" : "is_want_to_play";
+      const field = btn.dataset.action === "liked" ? "is_liked" : btn.dataset.action === "want" ? "is_want_to_play" : "in_setlist";
       toggleGuitarFlag(btn.dataset.songId, field);
     });
   });
@@ -398,7 +669,7 @@ function attachGuitarSongSwipe(wrap, song) {
   deleteBtn.addEventListener("click", async () => {
     const { error } = await supabaseClient.from("guitar_songs").delete().eq("id", song.id);
     if (error) {
-      alert("Failed to delete: " + error.message);
+      await uiAlert("Failed to delete: " + error.message);
       return;
     }
     await refreshGuitarAfterAction();
@@ -414,17 +685,22 @@ function openAddSongSheetMobile(existing) {
       <div class="m-sheet-body">
         <div class="m-stat-block" style="margin-bottom:14px;">
           <div class="label">Title</div>
-          <input type="text" id="m-song-title" autofocus value="${existing ? escapeHtmlMobile(existing.title) : ""}"
+          <input type="text" id="m-song-title" autofocus autocomplete="off" value="${existing ? escapeHtmlMobile(existing.title) : ""}"
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
         </div>
         <div class="m-stat-block" style="margin-bottom:14px;">
           <div class="label">Artist</div>
-          <input type="text" id="m-song-artist" value="${existing ? escapeHtmlMobile(existing.artist || "") : ""}"
+          <input type="text" id="m-song-artist" autocomplete="off" value="${existing ? escapeHtmlMobile(existing.artist || "") : ""}"
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
         </div>
         <div class="m-stat-block" style="margin-bottom:14px;">
           <div class="label">Link</div>
-          <input type="url" id="m-song-link" value="${existing ? escapeHtmlMobile(existing.link || "") : ""}"
+          <input type="url" id="m-song-link" autocomplete="off" value="${existing ? escapeHtmlMobile(existing.link || "") : ""}"
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Tags (comma separated)</div>
+          <input type="text" id="m-song-tags" autocomplete="off" placeholder="e.g. acoustic, fingerstyle" value="${existing ? escapeHtmlMobile((existing.tags || []).join(", ")) : ""}"
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
         </div>
       </div>
@@ -438,6 +714,8 @@ function openAddSongSheetMobile(existing) {
     if (e.target === overlay) overlay.remove();
   });
 
+  attachArtistAutocomplete(document.getElementById("m-song-artist"));
+
   document.getElementById("m-save-song-btn").addEventListener("click", async () => {
     const titleInput = document.getElementById("m-song-title");
     const title = titleInput.value.trim();
@@ -450,6 +728,7 @@ function openAddSongSheetMobile(existing) {
       title,
       artist: document.getElementById("m-song-artist").value.trim() || null,
       link: document.getElementById("m-song-link").value.trim() || null,
+      tags: parseGuitarTagsInput(document.getElementById("m-song-tags").value),
     };
 
     beginMutation();
@@ -459,7 +738,7 @@ function openAddSongSheetMobile(existing) {
     endMutation();
 
     if (error) {
-      alert(`Failed to ${existing ? "save" : "add"} song: ` + error.message);
+      await uiAlert(`Failed to ${existing ? "save" : "add"} song: ` + error.message);
       btn.disabled = false;
       btn.textContent = existing ? "Save" : "Add Song";
       return;

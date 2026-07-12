@@ -30,7 +30,7 @@ async function addTodo(text) {
   if (!trimmed) return;
   const { error } = await supabaseClient.from("todos").insert({ text: trimmed });
   if (error) {
-    alert("Failed to add task: " + error.message);
+    await uiAlert("Failed to add task: " + error.message);
     return;
   }
   await loadTodos();
@@ -128,7 +128,7 @@ function renderReminderListHtml(paymentReminders, incomeReminders, escapeFn) {
 
       return `
     <div class="home-payment-item status-${item.status}">
-      <span class="payment-status-badge status-${item.status}">${paymentStatusLabel(item.status)}</span>
+      ${paymentBadgeHtml(item.payment, item.status)}
       <span class="home-payment-name">${escapeFn(item.payment.name)}</span>
       <span class="home-payment-days">${daysLabel}</span>
       <span class="home-payment-amount">${formatMoney(item.payment.amount)}</span>
@@ -145,7 +145,7 @@ function wireHomeReminderIncomeClicks(container, onDone) {
     row.addEventListener("click", async () => {
       const rule = (financeRecurringIncomeCache || []).find((r) => r.id === row.dataset.recurringIncomeId);
       if (!rule) return;
-      if (!confirm(`Mark "${rule.name}" (${formatMoney(rule.amount)}) as received?`)) return;
+      if (!(await uiConfirm(`Mark "${rule.name}" (${formatMoney(rule.amount)}) as received?`))) return;
       await markRecurringIncomeReceived(rule.id);
       await loadFinanceRecurringIncomeCache();
       onDone();

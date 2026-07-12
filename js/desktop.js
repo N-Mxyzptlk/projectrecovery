@@ -7,7 +7,7 @@
 let currentUserId = null;
 let stationsCache = [];   // refreshed on load, reused by routine/workout forms
 let stationStatCharts = {}; // keyed by station id, so we can destroy/recreate on reload
-let currentApp = "home"; // 'home' | 'workout' | 'finance' | 'guitar' | 'admin' — which app the sidebar/top-tabs are pointed at
+let currentApp = "home"; // 'home' | 'workout' | 'finance' | 'guitar' | 'movies' | 'admin' — which app the sidebar/top-tabs are pointed at
 
 // Default landing page per app, and the load function each top-tab view maps to.
 const APP_DEFAULT_VIEW = { workout: "dashboard", finance: "findash" };
@@ -36,6 +36,7 @@ function initDesktopApp(session) {
 
   wireFinanceActions(); // defined in finance.js
   wireGuitarActions(); // defined in guitar.js
+  wireMoviesActions(); // defined in movies.js
 
   runConnectivityCheck();
   setInterval(runConnectivityCheck, 60000);
@@ -58,7 +59,7 @@ function initDesktopApp(session) {
  *  back where the user was instead of resetting to the workout dashboard. */
 function saveLastLocation() {
   try {
-    const view = currentApp === "admin" || currentApp === "home" || currentApp === "guitar" ? null : document.querySelector(`#top-tabs-${currentApp} .top-tab.active`)?.dataset.view || null;
+    const view = currentApp === "admin" || currentApp === "home" || currentApp === "guitar" || currentApp === "movies" ? null : document.querySelector(`#top-tabs-${currentApp} .top-tab.active`)?.dataset.view || null;
     sessionStorage.setItem("np_lastLocation", JSON.stringify({ app: currentApp, view }));
   } catch {}
 }
@@ -101,11 +102,11 @@ function switchApp(appName, viewName) {
   document.getElementById("app-views-workout").classList.toggle("hidden", appName !== "workout");
   document.getElementById("app-views-finance").classList.toggle("hidden", appName !== "finance");
 
-  if (appName === "admin" || appName === "home" || appName === "guitar") {
+  if (appName === "admin" || appName === "home" || appName === "guitar" || appName === "movies") {
     document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
     document.getElementById(`view-${appName}`).classList.remove("hidden");
     saveLastLocation();
-    const result = appName === "admin" ? loadAdmin() : appName === "guitar" ? loadGuitarDashboard() : loadHomeDashboard();
+    const result = appName === "admin" ? loadAdmin() : appName === "guitar" ? loadGuitarDashboard() : appName === "movies" ? loadMoviesDashboard() : loadHomeDashboard();
     Promise.resolve(result).then(touchLastUpdated);
     return result;
   }
@@ -976,7 +977,7 @@ function openStationModal(stationId) {
     }
 
     if (error) {
-      alert("Failed to save station: " + error.message);
+      await uiAlert("Failed to save station: " + error.message);
       return;
     }
     closeModal();
@@ -985,10 +986,10 @@ function openStationModal(stationId) {
 }
 
 async function deleteStation(stationId) {
-  if (!confirm("Delete this station? This cannot be undone.")) return;
+  if (!(await uiConfirm("Delete this station? This cannot be undone."))) return;
   const { error } = await supabaseClient.from("stations").delete().eq("id", stationId);
   if (error) {
-    alert("Failed to delete: " + error.message);
+    await uiAlert("Failed to delete: " + error.message);
     return;
   }
   loadStations();
@@ -1092,7 +1093,7 @@ function toggleSelectAllWorkouts(checked) {
 async function deleteSelectedWorkouts() {
   const ids = [...selectedWorkoutIds];
   if (ids.length === 0) return;
-  if (!confirm(`Delete ${ids.length} selected workout${ids.length === 1 ? "" : "s"} and all their logged sets?`)) return;
+  if (!(await uiConfirm(`Delete ${ids.length} selected workout${ids.length === 1 ? "" : "s"} and all their logged sets?`))) return;
 
   const btn = document.getElementById("workouts-delete-selected-btn");
   btn.disabled = true;
@@ -1102,7 +1103,7 @@ async function deleteSelectedWorkouts() {
 
   btn.textContent = "Delete Selected";
 
-  if (error) return alert("Failed to delete: " + error.message);
+  if (error) return uiAlert("Failed to delete: " + error.message);
   loadWorkouts();
 }
 
@@ -1113,7 +1114,7 @@ async function openWorkoutDetail(workoutId) {
     .eq("id", workoutId)
     .single();
 
-  if (error) return alert("Failed to load workout: " + error.message);
+  if (error) return uiAlert("Failed to load workout: " + error.message);
 
   // Grouped by station and labeled the same way mobile's Journal does
   // ("Set N · reps reps @ weightkg") — this is a list to scan, not an
@@ -1168,24 +1169,24 @@ async function openWorkoutDetail(workoutId) {
 }
 
 async function deleteSet(setId, workoutId) {
-  if (!confirm("Delete this set?")) return;
+  if (!(await uiConfirm("Delete this set?"))) return;
   const { error } = await supabaseClient.from("workout_sets").delete().eq("id", setId);
-  if (error) return alert("Failed to delete set: " + error.message);
+  if (error) return uiAlert("Failed to delete set: " + error.message);
   loadWorkouts();
   openWorkoutDetail(workoutId);
 }
 
 async function deleteWorkout(workoutId) {
-  if (!confirm("Delete this workout and all its logged sets?")) return;
+  if (!(await uiConfirm("Delete this workout and all its logged sets?"))) return;
   const { error } = await supabaseClient.from("workouts").delete().eq("id", workoutId);
-  if (error) return alert("Failed to delete: " + error.message);
+  if (error) return uiAlert("Failed to delete: " + error.message);
   loadWorkouts();
 }
 
 /** Small, destructive shortcut living on the Workouts view itself (Admin's
  *  Danger Zone has the same underlying wipe — this just saves the trip). */
 async function clearAllWorkouts() {
-  if (!confirm("Delete ALL workouts and every logged set? This cannot be undone.")) return;
+  if (!(await uiConfirm("Delete ALL workouts and every logged set? This cannot be undone."))) return;
 
   const btn = document.getElementById("clear-all-workouts-btn");
   btn.disabled = true;
@@ -1196,6 +1197,6 @@ async function clearAllWorkouts() {
   btn.disabled = false;
   btn.textContent = "Clear All";
 
-  if (error) return alert("Failed to clear: " + error.message);
+  if (error) return uiAlert("Failed to clear: " + error.message);
   loadWorkouts();
 }

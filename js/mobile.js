@@ -170,6 +170,10 @@ function renderFabStack() {
       ? `
       <button class="m-fab" id="m-add-song-fab" aria-label="Add song">+</button>
     `
+      : mApp === "movies"
+      ? `
+      <button class="m-fab" id="m-add-movie-fab" aria-label="Add title">+</button>
+    `
       : ""; // home has no sub-screens — just the toggle + settings below
 
   stack.innerHTML = `
@@ -217,6 +221,11 @@ function renderFabStack() {
       collapseFabStack();
       openAddSongSheetMobile(); // defined in guitar.js
     });
+  } else if (mApp === "movies") {
+    document.getElementById("m-add-movie-fab").addEventListener("click", () => {
+      collapseFabStack();
+      openMovieSheetMobile(); // defined in movies.js
+    });
   }
 }
 
@@ -263,6 +272,8 @@ function switchMobileApp(appName) {
     initFinanceMobile(); // defined in finance.js
   } else if (mApp === "guitar") {
     initGuitarMobile(); // defined in guitar.js
+  } else if (mApp === "movies") {
+    initMoviesMobile(); // defined in movies.js
   } else {
     renderHomeScreenMobile(); // defined in home.js
   }
@@ -549,7 +560,7 @@ async function startWorkout() {
   endMutation();
 
   if (error) {
-    alert("Couldn't start workout: " + error.message);
+    await uiAlert("Couldn't start workout: " + error.message);
     btn.disabled = false;
     btn.textContent = "Start Workout";
     return;
@@ -884,7 +895,7 @@ function openSetEditSheet(set, options) {
     endMutation();
 
     if (error) {
-      alert("Failed to save: " + error.message);
+      await uiAlert("Failed to save: " + error.message);
       btn.disabled = false;
       btn.textContent = "Save Changes";
       return;
@@ -1034,7 +1045,7 @@ function renderContinuityCard() {
    ============================================ */
 async function logSet() {
   if (!mSelectedStationId) {
-    alert("Pick a station first.");
+    await uiAlert("Pick a station first.");
     return;
   }
   const btn = document.getElementById("m-log-set-btn");
@@ -1065,7 +1076,7 @@ async function logSet() {
   endMutation();
 
   if (error) {
-    alert("Failed to log set: " + error.message);
+    await uiAlert("Failed to log set: " + error.message);
     btn.disabled = false;
     btn.textContent = mIsPRAttemptMode ? "Log PR Attempt" : "Log Set";
     return;
@@ -1142,7 +1153,7 @@ async function deleteSetMobile(setId) {
   const { error } = await supabaseClient.from("workout_sets").delete().eq("id", setId);
   endMutation();
   if (error) {
-    alert("Failed to delete: " + error.message);
+    await uiAlert("Failed to delete: " + error.message);
     return;
   }
   mCurrentWorkout.workout_sets = mCurrentWorkout.workout_sets.filter((s) => s.id !== setId);
@@ -1180,7 +1191,7 @@ async function finishWorkout() {
   endMutation();
 
   if (error) {
-    alert("Failed to finish: " + error.message);
+    await uiAlert("Failed to finish: " + error.message);
     return;
   }
 
@@ -1431,7 +1442,7 @@ async function confirmDeleteJournalWorkout(workout) {
   const { error } = await supabaseClient.from("workouts").delete().eq("id", workout.id);
   endMutation();
   if (error) {
-    alert("Failed to delete: " + error.message);
+    await uiAlert("Failed to delete: " + error.message);
   }
   loadJournalDay();
 }
@@ -1439,14 +1450,14 @@ async function confirmDeleteJournalWorkout(workout) {
 /** Reached from the detail sheet's Delete button — no swipe gesture backs
  *  this one up, so it needs its own explicit confirmation. */
 async function deleteJournalWorkoutWithConfirm(workout, overlay) {
-  if (!confirm("Delete this workout and all its logged sets? This cannot be undone.")) return;
+  if (!(await uiConfirm("Delete this workout and all its logged sets? This cannot be undone."))) return;
 
   beginMutation();
   const { error } = await supabaseClient.from("workouts").delete().eq("id", workout.id);
   endMutation();
 
   if (error) {
-    alert("Failed to delete: " + error.message);
+    await uiAlert("Failed to delete: " + error.message);
     return;
   }
   overlay.remove();
@@ -1494,7 +1505,7 @@ function openJournalEditSheet(workout) {
     endMutation();
 
     if (error) {
-      alert("Failed to save: " + error.message);
+      await uiAlert("Failed to save: " + error.message);
       btn.disabled = false;
       btn.textContent = "Save";
       return;
@@ -1856,7 +1867,7 @@ async function exportDataMobile() {
     a.remove();
     URL.revokeObjectURL(url);
   } catch (e) {
-    alert("Export failed: " + e.message);
+    await uiAlert("Export failed: " + e.message);
   }
 
   btn.disabled = false;
@@ -1901,7 +1912,7 @@ function openAddStationSheet() {
 
     const { error } = await supabaseClient.from("stations").insert({ name });
     if (error) {
-      alert("Failed to save station: " + error.message);
+      await uiAlert("Failed to save station: " + error.message);
       btn.disabled = false;
       btn.textContent = "Save";
       return;

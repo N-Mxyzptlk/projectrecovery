@@ -69,6 +69,9 @@
       <div class="m-drawer-app-item" data-app="guitar">
         <div class="m-drawer-app-name">Guitar</div>
       </div>
+      <div class="m-drawer-app-item" data-app="movies">
+        <div class="m-drawer-app-name">Movies</div>
+      </div>
     </nav>
   </div>
 
@@ -100,6 +103,7 @@
       <div class="nav-item app-nav-item" data-app="workout">Workout</div>
       <div class="nav-item app-nav-item" data-app="finance">Finance</div>
       <div class="nav-item app-nav-item" data-app="guitar">Guitar</div>
+      <div class="nav-item app-nav-item" data-app="movies">Movies</div>
 
       <div class="sidebar-footer">
         <div class="status-row" id="status-row">
@@ -366,7 +370,10 @@
               <h2>Payments</h2>
               <div class="subtitle">Subscriptions and upcoming one-time payments</div>
             </div>
-            <button class="btn-accent" id="add-payment-btn">+ New payment</button>
+            <div class="view-header-actions">
+              <button class="btn-ghost btn-clear-all hidden" id="payments-clear-history-btn">Clear History</button>
+              <button class="btn-accent" id="add-payment-btn">+ New payment</button>
+            </div>
           </div>
           <div id="payments-due-section"></div>
           <div id="payments-upcoming-section"></div>
@@ -383,14 +390,39 @@
             <div class="subtitle">Songs you're playing, liked, and want to learn</div>
           </div>
           <div class="view-header-actions">
+            <button class="btn-ghost" id="guitar-load-setlist-btn">Load Setlist</button>
             <button class="btn-ghost btn-clear-all" id="guitar-clear-all-btn">Clear All</button>
             <button class="btn-accent" id="add-song-btn">+ Add song</button>
           </div>
         </div>
         <div class="top-tabs" id="guitar-filter-tabs">
-          <!-- filled by JS: Catalogue / Liked / Want to Play filter tabs -->
+          <!-- filled by JS: Catalogue / Liked / Want to Play / Setlist filter tabs -->
+        </div>
+        <div class="guitar-tag-filter-row" id="guitar-tag-filter-row">
+          <!-- filled by JS: distinct song tags, when any exist -->
+        </div>
+        <div class="guitar-search-row">
+          <input type="text" id="guitar-search-input" autocomplete="off" placeholder="Search songs..." />
+          <button type="button" class="btn-ghost" id="guitar-search-artist-toggle" title="Search by artist instead of title">By Artist</button>
         </div>
         <div class="card" id="guitar-songs-list"></div>
+      </section>
+
+      <!-- MOVIES VIEW — single flat page, same shape as Guitar. -->
+      <section id="view-movies" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h2>Movies</h2>
+            <div class="subtitle">Things to watch, and where to watch them</div>
+          </div>
+          <div class="view-header-actions">
+            <button class="btn-accent" id="add-movie-btn">+ Add title</button>
+          </div>
+        </div>
+        <div class="top-tabs" id="movies-filter-tabs">
+          <!-- filled by JS: All / Movies / TV Shows filter tabs -->
+        </div>
+        <div class="card" id="movies-list"></div>
       </section>
 
       <!-- ADMIN VIEW -->
@@ -497,10 +529,12 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="js/config.js"></script>
   <script src="js/dbclient.js"></script>
+  <script src="js/uimodal.js"></script>
   <script src="js/desktop.js"></script>
   <script src="js/admin.js"></script>
   <script src="js/finance.js"></script>
   <script src="js/guitar.js"></script>
+  <script src="js/movies.js"></script>
   <script src="js/home.js"></script>
   <script src="js/mobile.js"></script>
 

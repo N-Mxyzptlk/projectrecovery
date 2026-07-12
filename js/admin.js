@@ -181,7 +181,7 @@ async function exportAllData() {
     a.remove();
     URL.revokeObjectURL(url);
   } catch (e) {
-    alert("Export failed: " + e.message);
+    await uiAlert("Export failed: " + e.message);
   }
 
   btn.disabled = false;
@@ -189,7 +189,7 @@ async function exportAllData() {
 }
 
 async function wipeWorkoutHistory() {
-  const typed = prompt('This deletes ALL workouts and sets permanently. Type "DELETE" to confirm.');
+  const typed = await uiPrompt('This deletes ALL workouts and sets permanently. Type "DELETE" to confirm.');
   if (typed !== "DELETE") return;
 
   const btn = document.getElementById("admin-wipe-workouts-btn");
@@ -201,9 +201,9 @@ async function wipeWorkoutHistory() {
   const { error } = await supabaseClient.from("workouts").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 
   if (error) {
-    alert("Failed to delete: " + error.message);
+    await uiAlert("Failed to delete: " + error.message);
   } else {
-    alert("Workout history deleted.");
+    await uiAlert("Workout history deleted.");
     loadAdminRowCounts();
   }
 
@@ -218,11 +218,11 @@ async function wipeWorkoutHistory() {
  *  the second requiring an exact typed phrase that names what's about to
  *  happen rather than a generic "DELETE". */
 async function wipeAllData() {
-  if (!confirm("This deletes EVERYTHING in every app — stations, workouts, sets, finance data, to-dos, and your guitar catalogue. Your login is not affected. Continue?")) return;
+  if (!(await uiConfirm("This deletes EVERYTHING in every app — stations, workouts, sets, finance data, to-dos, and your guitar catalogue. Your login is not affected. Continue?"))) return;
 
-  const typed = prompt('Type "WIPE ALL DATA" (exactly, all caps) to confirm. This cannot be undone.');
+  const typed = await uiPrompt('Type "WIPE ALL DATA" (exactly, all caps) to confirm. This cannot be undone.');
   if (typed !== "WIPE ALL DATA") {
-    if (typed !== null) alert("Text didn't match — nothing was deleted.");
+    if (typed !== null) await uiAlert("Text didn't match — nothing was deleted.");
     return;
   }
 
@@ -241,10 +241,10 @@ async function wipeAllData() {
   btn.textContent = "Wipe All";
 
   if (failed.length > 0) {
-    alert("Some tables failed to clear: " + failed.join(", ") + ". Check the console for details.");
+    await uiAlert("Some tables failed to clear: " + failed.join(", ") + ". Check the console for details.");
     console.error(results.filter((r) => r.error).map((r) => r.error));
   } else {
-    alert("All data wiped. Your login is unchanged.");
+    await uiAlert("All data wiped. Your login is unchanged.");
   }
 
   loadAdminRowCounts();

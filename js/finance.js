@@ -170,6 +170,18 @@ function paymentStatusLabel(status) {
   return { upcoming: "Upcoming", "due-soon": "Due soon", overdue: "Overdue", paid: "Paid", cancelled: "Cancelled" }[status];
 }
 
+/** The generic "Upcoming" badge doesn't say much once you already know it's
+ *  not due/overdue — swap it for what actually matters at that point:
+ *  whether it's a recurring Subscription or a one-time charge (OTC). Every
+ *  other status keeps its plain label. */
+function paymentBadgeHtml(payment, status) {
+  if (status === "upcoming") {
+    const isSubscription = payment.kind === "subscription";
+    return `<span class="payment-status-badge ${isSubscription ? "status-upcoming-subscription" : "status-upcoming-onetime"}">${isSubscription ? "Subscription" : "OTC"}</span>`;
+  }
+  return `<span class="payment-status-badge status-${status}">${paymentStatusLabel(status)}</span>`;
+}
+
 function advanceDueDate(dateStr, interval) {
   const d = new Date(dateStr);
   if (interval === "weekly") d.setDate(d.getDate() + 7);
@@ -237,7 +249,7 @@ async function markPaymentPaid(paymentId) {
 
   if (expError) {
     endMutation();
-    alert("Failed to log expense: " + expError.message);
+    await uiAlert("Failed to log expense: " + expError.message);
     return;
   }
 
@@ -249,7 +261,7 @@ async function markPaymentPaid(paymentId) {
   endMutation();
 
   if (error) {
-    alert("Failed to update payment: " + error.message);
+    await uiAlert("Failed to update payment: " + error.message);
     return;
   }
   await refreshFinanceAfterAction();
@@ -273,7 +285,7 @@ async function markPaymentOverdue(paymentId) {
   beginMutation();
   const { error } = await supabaseClient.from("finance_payments").update({ status: "overdue" }).eq("id", paymentId);
   endMutation();
-  if (error) return alert("Failed to update payment: " + error.message);
+  if (error) return uiAlert("Failed to update payment: " + error.message);
   await refreshFinanceAfterAction();
 
   showFinanceUndoToast(`${payment.name} Overdue`, async () => {
@@ -295,15 +307,14 @@ async function markPaymentCancelled(paymentId) {
   const scopeMsg = payment.kind === "subscription"
     ? `Cancel "${payment.name}"? This stops all future occurrences of this subscription.`
     : `Cancel "${payment.name}"?`;
-  if (!confirm(scopeMsg)) return;
-  if (!confirm("Are you sure? This can't be undone once the Undo option disappears.")) return;
+  if (!(await uiConfirm(scopeMsg))) return;
 
   const previousStatus = payment.status;
 
   beginMutation();
   const { error } = await supabaseClient.from("finance_payments").update({ status: "cancelled" }).eq("id", paymentId);
   endMutation();
-  if (error) return alert("Failed to cancel: " + error.message);
+  if (error) return uiAlert("Failed to cancel: " + error.message);
   await refreshFinanceAfterAction();
 
   showFinanceUndoToast(`${payment.name} Cancelled`, async () => {
@@ -382,8 +393,12 @@ function computeDueItemsByDay(payments, year, month) {
   return map;
 }
 
-function statusPriority(status) {
-  return { upcoming: 1, "due-soon": 2, overdue: 3 }[status] || 0;
+/** Dot color is kind-driven (yellow = subscription, green = one-time),
+ *  except overdue always wins as red regardless of kind — that's the one
+ *  status urgent enough to override everything else. */
+function dueDotColorClass(item) {
+  if (item.status === "overdue") return "dot-overdue";
+  return item.payment.kind === "subscription" ? "dot-subscription" : "dot-onetime";
 }
 
 function renderFinanceCalendarHtml(payments, year, month) {
@@ -391,20 +406,32 @@ function renderFinanceCalendarHtml(payments, year, month) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const dueItemsByDay = computeDueItemsByDay(payments, year, month);
   const today = new Date();
+  const MAX_DOTS = 4;
 
   const cells = [];
   for (let i = 0; i < firstWeekday; i++) cells.push(`<div class="fin-cal-cell empty"></div>`);
   for (let day = 1; day <= daysInMonth; day++) {
     const items = dueItemsByDay[day] || [];
-    let topStatus = null;
-    items.forEach((it) => {
-      if (!topStatus || statusPriority(it.status) > statusPriority(topStatus)) topStatus = it.status;
-    });
+    const hasOverdue = items.some((it) => it.status === "overdue");
+    // "Danger close" — due soon but not overdue yet — gets its own pulsing
+    // ring on the dot rather than a fourth base color, since the ask was
+    // specifically three colors (kind x2 + overdue).
+    const hasDangerClose = items.some((it) => it.status === "due-soon");
     const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+
+    const visibleItems = items.slice(0, MAX_DOTS);
+    const overflow = items.length - visibleItems.length;
+    const dotsHtml = items.length
+      ? `<div class="fin-cal-dots">
+          ${visibleItems.map((it) => `<span class="fin-cal-dot ${dueDotColorClass(it)} ${it.status === "due-soon" ? "dot-danger-close" : ""}"></span>`).join("")}
+          ${overflow > 0 ? `<span class="fin-cal-dot-more">+${overflow}</span>` : ""}
+        </div>`
+      : "";
+
     cells.push(`
-      <div class="fin-cal-cell ${isToday ? "today" : ""} ${topStatus ? `has-due status-${topStatus}` : ""}" data-day="${day}">
+      <div class="fin-cal-cell ${isToday ? "today" : ""} ${items.length ? "has-due" : ""} ${hasOverdue ? "cell-overdue" : hasDangerClose ? "cell-danger-close" : ""}" data-day="${day}">
         <span>${day}</span>
-        ${topStatus ? `<span class="fin-cal-dot"></span>` : ""}
+        ${dotsHtml}
       </div>`);
   }
 
@@ -474,7 +501,7 @@ function showCalendarPopover(cell, items) {
     .map(
       (it) => `
     <div class="fin-cal-popover-row">
-      <span class="payment-status-badge status-${it.status}">${paymentStatusLabel(it.status)}</span>
+      ${paymentBadgeHtml(it.payment, it.status)}
       <span class="name">${escapeHtml(it.payment.name)}</span>
       <span class="amount">${formatMoney(it.payment.amount)}</span>
     </div>`
@@ -535,7 +562,7 @@ function openCalendarDaySheetMobile(day, items) {
             .map(
               (it) => `
             <div class="m-cal-day-item">
-              <span class="payment-status-badge status-${it.status}">${paymentStatusLabel(it.status)}</span>
+              ${paymentBadgeHtml(it.payment, it.status)}
               <span class="name">${escapeHtmlMobile(it.payment.name)}</span>
               <span class="amount">${formatMoney(it.payment.amount)}</span>
             </div>`
@@ -565,6 +592,7 @@ function wireFinanceActions() {
   document.getElementById("manage-categories-btn").addEventListener("click", openCategoryManagerModal);
   document.getElementById("add-expense-btn").addEventListener("click", () => openExpenseModal());
   document.getElementById("add-payment-btn").addEventListener("click", () => openPaymentModal());
+  document.getElementById("payments-clear-history-btn").addEventListener("click", clearPaymentHistory);
   document.getElementById("add-recurring-income-btn").addEventListener("click", () => openRecurringIncomeModal());
 }
 
@@ -864,7 +892,7 @@ function openExpenseModal(expenseId) {
     }
 
     if (error) {
-      alert("Failed to save expense: " + error.message);
+      await uiAlert("Failed to save expense: " + error.message);
       return;
     }
     closeModal();
@@ -873,9 +901,9 @@ function openExpenseModal(expenseId) {
 }
 
 async function deleteExpense(id) {
-  if (!confirm("Delete this expense?")) return;
+  if (!(await uiConfirm("Delete this expense?"))) return;
   const { error } = await supabaseClient.from("finance_expenses").delete().eq("id", id);
-  if (error) return alert("Failed to delete: " + error.message);
+  if (error) return uiAlert("Failed to delete: " + error.message);
   loadFinanceExpenses();
 }
 
@@ -914,7 +942,7 @@ function openIncomeModal() {
     });
 
     if (error) {
-      alert("Failed to add income: " + error.message);
+      await uiAlert("Failed to add income: " + error.message);
       return;
     }
     closeModal();
@@ -964,7 +992,7 @@ function openAdjustmentModal() {
     });
 
     if (error) {
-      alert("Failed to save adjustment: " + error.message);
+      await uiAlert("Failed to save adjustment: " + error.message);
       return;
     }
     closeModal();
@@ -973,9 +1001,9 @@ function openAdjustmentModal() {
 }
 
 async function deleteBalanceEntry(id) {
-  if (!confirm("Delete this entry?")) return;
+  if (!(await uiConfirm("Delete this entry?"))) return;
   const { error } = await supabaseClient.from("finance_balance_entries").delete().eq("id", id);
-  if (error) return alert("Failed to delete: " + error.message);
+  if (error) return uiAlert("Failed to delete: " + error.message);
   loadFinanceDashboard();
 }
 
@@ -1077,7 +1105,7 @@ function openRecurringIncomeModal(id) {
     }
 
     if (error) {
-      alert("Failed to save recurring income: " + error.message);
+      await uiAlert("Failed to save recurring income: " + error.message);
       return;
     }
     closeModal();
@@ -1098,21 +1126,21 @@ async function markRecurringIncomeReceived(id) {
     note: rule.name,
     occurred_at: new Date().toISOString(),
   });
-  if (incomeError) return alert("Failed to log income: " + incomeError.message);
+  if (incomeError) return uiAlert("Failed to log income: " + incomeError.message);
 
   const { error } = await supabaseClient
     .from("finance_recurring_income")
     .update({ next_due_date: advanceDueDate(rule.next_due_date, rule.recurrence_interval) })
     .eq("id", id);
-  if (error) return alert("Failed to update recurring income: " + error.message);
+  if (error) return uiAlert("Failed to update recurring income: " + error.message);
 
   await refreshAfterRecurringIncomeAction();
 }
 
 async function deleteRecurringIncome(id) {
-  if (!confirm("Delete this recurring income?")) return;
+  if (!(await uiConfirm("Delete this recurring income?"))) return;
   const { error } = await supabaseClient.from("finance_recurring_income").delete().eq("id", id);
-  if (error) return alert("Failed to delete: " + error.message);
+  if (error) return uiAlert("Failed to delete: " + error.message);
   closeModal();
   await refreshAfterRecurringIncomeAction();
 }
@@ -1169,7 +1197,7 @@ function openCategoryManagerModal() {
 
     const { error } = await supabaseClient.from("finance_categories").insert({ name, color: nextCategoryColor() });
     if (error) {
-      alert("Failed to add category: " + error.message);
+      await uiAlert("Failed to add category: " + error.message);
       return;
     }
 
@@ -1203,9 +1231,9 @@ function renderCategoryManagerList() {
 }
 
 async function deleteCategoryDesktop(id) {
-  if (!confirm("Delete this category? Expenses using it become Uncategorized.")) return;
+  if (!(await uiConfirm("Delete this category? Expenses using it become Uncategorized."))) return;
   const { error } = await supabaseClient.from("finance_categories").delete().eq("id", id);
-  if (error) return alert("Failed to delete: " + error.message);
+  if (error) return uiAlert("Failed to delete: " + error.message);
   await loadFinanceCategories();
   renderCategoryManagerList();
 }
@@ -1242,6 +1270,35 @@ function renderFinancePaymentsLists() {
   document.getElementById("payments-history-section").innerHTML = history.length
     ? `<div class="payments-section-title">History</div>${history.map((d) => renderPaymentRow(d.payment, d.status)).join("")}`
     : "";
+
+  const clearHistoryBtn = document.getElementById("payments-clear-history-btn");
+  if (clearHistoryBtn) clearHistoryBtn.classList.toggle("hidden", history.length === 0);
+}
+
+/** Permanently removes every Paid/Cancelled payment from history in one
+ *  go — a single confirmation, since the undo toast is what actually
+ *  covers the "I didn't mean that" case (see markPaymentCancelled). */
+async function clearPaymentHistory() {
+  const historyRows = financePaymentsCache.filter((p) => {
+    const status = computePaymentDisplayStatus(p);
+    return status === "paid" || status === "cancelled";
+  });
+  if (historyRows.length === 0) return;
+
+  if (!(await uiConfirm(`Clear ${historyRows.length} payment${historyRows.length === 1 ? "" : "s"} from history? This can't be undone once the Undo option disappears.`))) return;
+
+  beginMutation();
+  const { error } = await supabaseClient.from("finance_payments").delete().in("id", historyRows.map((p) => p.id));
+  endMutation();
+  if (error) return uiAlert("Failed to clear history: " + error.message);
+
+  await refreshFinanceAfterAction();
+  showFinanceUndoToast(`Cleared ${historyRows.length} from history`, async () => {
+    beginMutation();
+    await supabaseClient.from("finance_payments").insert(historyRows);
+    endMutation();
+    await refreshFinanceAfterAction();
+  });
 }
 
 function renderPaymentRow(payment, status) {
@@ -1261,7 +1318,7 @@ function renderPaymentRow(payment, status) {
   return `
     <div class="payment-row status-${status}">
       <div class="payment-row-main">
-        <span class="payment-status-badge status-${status}">${paymentStatusLabel(status)}</span>
+        ${paymentBadgeHtml(payment, status)}
         <div>
           <div class="payment-name">${escapeHtml(payment.name)}</div>
           <div class="payment-meta">${payment.kind === "subscription" ? `Repeats ${payment.recurrence_interval}` : "One-time"} · Due ${formatDueDate(payment.next_due_date)}</div>
@@ -1354,7 +1411,7 @@ function openPaymentModal(paymentId) {
     }
 
     if (error) {
-      alert("Failed to save payment: " + error.message);
+      await uiAlert("Failed to save payment: " + error.message);
       return;
     }
     closeModal();
@@ -1363,9 +1420,9 @@ function openPaymentModal(paymentId) {
 }
 
 async function deletePayment(id) {
-  if (!confirm("Delete this payment? This cannot be undone.")) return;
+  if (!(await uiConfirm("Delete this payment? This cannot be undone."))) return;
   const { error } = await supabaseClient.from("finance_payments").delete().eq("id", id);
-  if (error) return alert("Failed to delete: " + error.message);
+  if (error) return uiAlert("Failed to delete: " + error.message);
   closeModal();
   loadFinancePayments();
 }
@@ -1546,10 +1603,10 @@ function renderRecentTransactionsList() {
 function wireRecentTransactionsDelete() {
   document.querySelectorAll("#m-recent-expenses .delete-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("Delete this?")) return;
+      if (!(await uiConfirm("Delete this?"))) return;
       const { error } = await supabaseClient.from(btn.dataset.table).delete().eq("id", btn.dataset.id);
       if (error) {
-        alert("Failed to delete: " + error.message);
+        await uiAlert("Failed to delete: " + error.message);
         return;
       }
       await refreshFinanceMobileFeeds();
@@ -1595,7 +1652,7 @@ async function logExpenseMobile() {
   endMutation();
 
   if (error) {
-    alert("Failed to log expense: " + error.message);
+    await uiAlert("Failed to log expense: " + error.message);
     btn.disabled = false;
     btn.textContent = "Log Expense";
     return;
@@ -1648,7 +1705,7 @@ function openAddCategorySheetMobile() {
       .single();
 
     if (error) {
-      alert("Failed to save category: " + error.message);
+      await uiAlert("Failed to save category: " + error.message);
       btn.disabled = false;
       btn.textContent = "Save";
       return;
@@ -1670,6 +1727,7 @@ function renderFinanceDueScreen() {
   const decorated = financePaymentsCache.map((p) => ({ payment: p, status: computePaymentDisplayStatus(p) }));
   const due = decorated.filter((d) => d.status === "due-soon" || d.status === "overdue");
   const upcoming = decorated.filter((d) => d.status === "upcoming");
+  const history = decorated.filter((d) => d.status === "paid" || d.status === "cancelled");
 
   document.getElementById("m-main").innerHTML = `
     <div class="m-set-list-label" style="display:flex;justify-content:space-between;align-items:center;">
@@ -1684,6 +1742,13 @@ function renderFinanceDueScreen() {
     ${upcoming.length
       ? `<div class="m-set-list-label" style="margin-top:20px;">Upcoming</div>
          <div id="m-payments-upcoming">${upcoming.map((d) => renderMobilePaymentRow(d.payment, d.status)).join("")}</div>`
+      : ""}
+    ${history.length
+      ? `<div class="m-set-list-label" style="margin-top:20px;display:flex;justify-content:space-between;align-items:center;">
+          <span>History</span>
+          <button type="button" class="btn-ghost" id="m-payments-clear-history-btn" style="padding:5px 12px;font-size:11px;">Clear History</button>
+        </div>
+        <div id="m-payments-history">${history.map((d) => renderMobilePaymentRow(d.payment, d.status)).join("")}</div>`
       : ""}
     <div class="meta-line" style="text-align:center;margin-top:16px;color:var(--text-faint);font-size:11px;">Hold a payment for actions</div>
   `;
@@ -1704,6 +1769,9 @@ function renderMobilePaymentRow(payment, status) {
 
 function wireFinanceDueScreen() {
   document.getElementById("m-add-payment-btn").addEventListener("click", openAddPaymentSheetMobile);
+
+  const clearHistoryBtn = document.getElementById("m-payments-clear-history-btn");
+  if (clearHistoryBtn) clearHistoryBtn.addEventListener("click", clearPaymentHistory);
 
   document.querySelectorAll(".m-payment-row").forEach((row) => {
     const payment = financePaymentsCache.find((p) => p.id === row.dataset.paymentId);
@@ -1751,7 +1819,7 @@ function openPaymentActionSheetMobile(payment) {
       <div class="m-sheet-body">
         <div class="m-sheet-title">${escapeHtmlMobile(payment.name)}</div>
         <div class="m-payment-sheet-meta">
-          <span class="payment-status-badge status-${status}">${paymentStatusLabel(status)}</span>
+          ${paymentBadgeHtml(payment, status)}
           <span>Days Due: ${days}</span>
         </div>
         <div class="m-payment-sheet-amount">${formatMoney(payment.amount)}</div>
@@ -1875,7 +1943,7 @@ function openAddPaymentSheetMobile() {
     endMutation();
 
     if (error) {
-      alert("Failed to save payment: " + error.message);
+      await uiAlert("Failed to save payment: " + error.message);
       btn.disabled = false;
       btn.textContent = "Save";
       return;
@@ -1976,7 +2044,7 @@ function openAddIncomeSheetMobile() {
     endMutation();
 
     if (error) {
-      alert("Failed to add income: " + error.message);
+      await uiAlert("Failed to add income: " + error.message);
       btn.disabled = false;
       btn.textContent = "Add Income";
       return;
@@ -2048,7 +2116,7 @@ function openAdjustBalanceSheetMobile() {
     endMutation();
 
     if (error) {
-      alert("Failed to save adjustment: " + error.message);
+      await uiAlert("Failed to save adjustment: " + error.message);
       btn.disabled = false;
       btn.textContent = "Save";
       return;
@@ -2172,7 +2240,7 @@ function openRecurringIncomeActionSheetMobile(rule) {
       overlay.remove();
       if (btn.dataset.action === "received") await markRecurringIncomeReceived(rule.id);
       else if (btn.dataset.action === "edit") openRecurringIncomeEditSheetMobile(rule);
-      else if (confirm("Delete this recurring income?")) await deleteRecurringIncome(rule.id);
+      else if (await uiConfirm("Delete this recurring income?")) await deleteRecurringIncome(rule.id);
     });
   });
 }
@@ -2251,7 +2319,7 @@ function openRecurringIncomeEditSheetMobile(existing) {
     endMutation();
 
     if (error) {
-      alert("Failed to save: " + error.message);
+      await uiAlert("Failed to save: " + error.message);
       btn.disabled = false;
       btn.textContent = "Save";
       return;
