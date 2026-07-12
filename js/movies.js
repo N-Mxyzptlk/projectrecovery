@@ -32,47 +32,146 @@ function movieTypeBadgeHtml(mediaType) {
     : `<span class="movie-type-badge type-movie">Movie</span>`;
 }
 
-/** Chip picker shared by the desktop modal and mobile sheet — presets
- *  first, then any custom platforms already on this title that aren't one
- *  of the presets, so editing an existing title doesn't drop them. */
-function renderMoviePlatformPickerHtml(selected) {
-  const selectedSet = new Set(selected || []);
-  const customExtras = [...selectedSet].filter((p) => !MOVIE_PLATFORM_PRESETS.includes(p));
-  return [...MOVIE_PLATFORM_PRESETS, ...customExtras]
+/** Reorderable "selected platforms" list — one row per platform already on
+ *  the title, each with a drag handle (reorder) and a remove button. Order
+ *  in this list IS the stored order (read back via getPlatformOrderSelected
+ *  at submit time), which is what lets the user put their most-used
+ *  platform first. */
+function renderPlatformOrderListHtml(platforms) {
+  return (platforms || [])
     .map(
-      (p) =>
-        `<div class="movie-platform-chip ${selectedSet.has(p) ? "active" : ""}" data-platform="${escapeHtml(p)}" style="${moviePlatformBadgeStyle(p)}">${escapeHtml(p)}</div>`
+      (p) => `
+    <div class="platform-order-row" data-platform="${escapeHtml(p)}">
+      <span class="platform-order-handle" title="Drag to reorder">&#9776;</span>
+      <span class="movie-platform-badge" style="${moviePlatformBadgeStyle(p)}">${escapeHtml(p)}</span>
+      <button type="button" class="platform-order-remove" aria-label="Remove platform">&times;</button>
+    </div>`
     )
     .join("");
 }
 
-function wireMoviePlatformPicker(pickerEl, customInputEl) {
-  const wireChip = (chip) => chip.addEventListener("click", () => chip.classList.toggle("active"));
-  pickerEl.querySelectorAll(".movie-platform-chip").forEach(wireChip);
+/** The "add a platform" chip row — only presets not already selected, so
+ *  clicking a chip always means "add", never "toggle off" (removal happens
+ *  via the order-list's own remove button instead). */
+function renderPlatformAddPickerHtml(selected) {
+  const selectedSet = new Set(selected || []);
+  const available = MOVIE_PLATFORM_PRESETS.filter((p) => !selectedSet.has(p));
+  return available
+    .map((p) => `<div class="movie-platform-chip" data-platform="${escapeHtml(p)}" style="${moviePlatformBadgeStyle(p)}">${escapeHtml(p)}</div>`)
+    .join("");
+}
+
+/** Generic vertical drag-to-reorder for one row within containerEl — same
+ *  live-drag-then-settle Pointer Events pattern used elsewhere in the app
+ *  (attachGuitarSongSwipe, attachEdgeSwipeDrawer), just vertical instead of
+ *  horizontal. Wires a single row; called once per row (including ones
+ *  added later), not re-run over the whole list, so listeners never stack. */
+function wireDragHandle(containerEl, row) {
+  const handle = row.querySelector(".platform-order-handle");
+  if (!handle) return;
+
+  let dragging = false;
+  let startY = 0;
+  let rowHeight = 0;
+
+  handle.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    startY = e.clientY;
+    rowHeight = row.getBoundingClientRect().height || 1;
+    row.classList.add("dragging");
+    handle.setPointerCapture(e.pointerId);
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dy = e.clientY - startY;
+    const offset = Math.round(dy / rowHeight);
+    if (offset === 0) return;
+
+    const rows = [...containerEl.children];
+    const idx = rows.indexOf(row);
+    const targetIdx = Math.max(0, Math.min(rows.length - 1, idx + offset));
+    if (targetIdx === idx) return;
+
+    const targetRow = rows[targetIdx];
+    if (offset > 0) containerEl.insertBefore(row, targetRow.nextSibling);
+    else containerEl.insertBefore(row, targetRow);
+    startY = e.clientY;
+  });
+
+  const endDrag = () => {
+    dragging = false;
+    row.classList.remove("dragging");
+  };
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+}
+
+/** Wires the whole platform editor (order list + add picker + custom
+ *  input) for one Add/Edit form. `idPrefix` picks the desktop vs mobile
+ *  element ids ("movie-platform" / "m-movie-platform"). */
+function wireMoviePlatformEditor(idPrefix) {
+  const orderListEl = document.getElementById(`${idPrefix}-order-list`);
+  const addPickerEl = document.getElementById(`${idPrefix}-add-picker`);
+  const customInputEl = document.getElementById(`${idPrefix}-custom`);
+
+  function wireRemoveButtons() {
+    orderListEl.querySelectorAll(".platform-order-remove").forEach((btn) => {
+      if (btn.dataset.wired) return;
+      btn.dataset.wired = "1";
+      btn.addEventListener("click", () => {
+        btn.closest(".platform-order-row").remove();
+        refreshAddPicker();
+      });
+    });
+  }
+
+  function refreshAddPicker() {
+    const selected = getPlatformOrderSelected(idPrefix);
+    addPickerEl.innerHTML = renderPlatformAddPickerHtml(selected);
+    wireAddChips();
+  }
+
+  function wireAddChips() {
+    addPickerEl.querySelectorAll(".movie-platform-chip").forEach((chip) => {
+      chip.addEventListener("click", () => addPlatform(chip.dataset.platform));
+    });
+  }
+
+  function addPlatform(name) {
+    const selected = getPlatformOrderSelected(idPrefix);
+    if (selected.some((p) => p.toLowerCase() === name.toLowerCase())) return;
+
+    const row = document.createElement("div");
+    row.className = "platform-order-row";
+    row.dataset.platform = name;
+    row.innerHTML = `
+      <span class="platform-order-handle" title="Drag to reorder">&#9776;</span>
+      <span class="movie-platform-badge" style="${moviePlatformBadgeStyle(name)}">${escapeHtml(name)}</span>
+      <button type="button" class="platform-order-remove" aria-label="Remove platform">&times;</button>
+    `;
+    orderListEl.appendChild(row);
+    wireDragHandle(orderListEl, row);
+    wireRemoveButtons();
+    refreshAddPicker();
+  }
+
+  orderListEl.querySelectorAll(".platform-order-row").forEach((row) => wireDragHandle(orderListEl, row));
+  wireRemoveButtons();
+  wireAddChips();
 
   customInputEl.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
     const name = customInputEl.value.trim();
     if (!name) return;
-    const exists = [...pickerEl.querySelectorAll(".movie-platform-chip")].some(
-      (c) => c.dataset.platform.toLowerCase() === name.toLowerCase()
-    );
     customInputEl.value = "";
-    if (exists) return;
-
-    const chip = document.createElement("div");
-    chip.className = "movie-platform-chip active";
-    chip.dataset.platform = name;
-    chip.style.cssText = moviePlatformBadgeStyle(name);
-    chip.textContent = name;
-    wireChip(chip);
-    pickerEl.appendChild(chip);
+    addPlatform(name);
   });
 }
 
-function getSelectedMoviePlatforms(pickerEl) {
-  return [...pickerEl.querySelectorAll(".movie-platform-chip.active")].map((c) => c.dataset.platform);
+function getPlatformOrderSelected(idPrefix) {
+  return [...document.querySelectorAll(`#${idPrefix}-order-list .platform-order-row`)].map((r) => r.dataset.platform);
 }
 
 let moviesCache = [];
@@ -163,10 +262,12 @@ function renderMovieRow(movie) {
   return `
     <div class="card-row" data-movie-id="${movie.id}">
       <div>
-        <div class="title">${escapeHtml(movie.title)} ${movieTypeBadgeHtml(movie.media_type)}</div>
-        ${movie.platforms && movie.platforms.length
-          ? `<div class="movie-platform-list">${movie.platforms.map((p) => moviePlatformBadgeHtml(p)).join("")}</div>`
-          : `<div class="meta">No platform set</div>`}
+        <div class="title movie-title-row">
+          <span>${escapeHtml(movie.title)}</span>
+          ${movieTypeBadgeHtml(movie.media_type)}
+          ${(movie.platforms || []).map((p) => moviePlatformBadgeHtml(p)).join("")}
+        </div>
+        ${movie.rating ? `<div class="meta">${starRatingDisplayHtml(movie.rating)}</div>` : ""}
       </div>
       <div class="row-actions">
         <button class="icon-btn" onclick="openMovieModal('${movie.id}')">Edit</button>
@@ -197,8 +298,14 @@ function openMovieModal(movieId) {
         </select>
       </div>
       <div class="field">
+        <label>Rating</label>
+        ${renderStarRatingEditorHtml("movie", existing ? existing.rating : 0)}
+      </div>
+      <div class="field">
         <label>Platforms</label>
-        <div class="movie-platform-picker" id="movie-platform-picker">${renderMoviePlatformPickerHtml(existing ? existing.platforms : [])}</div>
+        <div class="platform-order-list" id="movie-platform-order-list">${renderPlatformOrderListHtml(existing ? existing.platforms : [])}</div>
+        <label style="margin-top:10px;">Add a platform</label>
+        <div class="movie-platform-picker" id="movie-platform-add-picker">${renderPlatformAddPickerHtml(existing ? existing.platforms : [])}</div>
         <label style="margin-top:10px;">Add custom platform (press Enter)</label>
         <input type="text" id="movie-platform-custom" autocomplete="off" />
       </div>
@@ -211,7 +318,8 @@ function openMovieModal(movieId) {
   `);
 
   enhanceSelect("movie-type");
-  wireMoviePlatformPicker(document.getElementById("movie-platform-picker"), document.getElementById("movie-platform-custom"));
+  wireStarRatingEditor("movie");
+  wireMoviePlatformEditor("movie-platform");
 
   document.getElementById("movie-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -221,7 +329,8 @@ function openMovieModal(movieId) {
     const payload = {
       title,
       media_type: document.getElementById("movie-type").value,
-      platforms: getSelectedMoviePlatforms(document.getElementById("movie-platform-picker")),
+      platforms: getPlatformOrderSelected("movie-platform"),
+      rating: getStarRatingValue("movie") || null,
     };
 
     const { error } = existing
@@ -287,10 +396,12 @@ function renderMovieRowMobile(movie) {
       <button type="button" class="m-swipe-action-btn m-swipe-action-delete">Delete</button>
       <div class="m-guitar-card">
         <div class="info">
-          <div class="name">${escapeHtmlMobile(movie.title)} ${movieTypeBadgeHtml(movie.media_type)}</div>
-          ${movie.platforms && movie.platforms.length
-            ? `<div class="movie-platform-list">${movie.platforms.map((p) => moviePlatformBadgeHtml(p)).join("")}</div>`
-            : `<div class="detail">No platform set</div>`}
+          <div class="name movie-title-row">
+            <span>${escapeHtmlMobile(movie.title)}</span>
+            ${movieTypeBadgeHtml(movie.media_type)}
+            ${(movie.platforms || []).map((p) => moviePlatformBadgeHtml(p)).join("")}
+          </div>
+          ${movie.rating ? `<div class="detail">${starRatingDisplayHtml(movie.rating)}</div>` : ""}
         </div>
         <div class="m-set-row-actions">
           <button class="m-guitar-icon-btn" data-action="edit" data-movie-id="${movie.id}" type="button">&#9998;</button>
@@ -412,8 +523,14 @@ function openMovieSheetMobile(existing) {
           </div>
         </div>
         <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Rating</div>
+          <div style="margin-top:8px;">${renderStarRatingEditorHtml("m-movie", existing ? existing.rating : 0)}</div>
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
           <div class="label">Platforms</div>
-          <div class="movie-platform-picker" id="m-movie-platform-picker" style="margin-top:8px;">${renderMoviePlatformPickerHtml(existing ? existing.platforms : [])}</div>
+          <div class="platform-order-list" id="m-movie-platform-order-list" style="margin-top:8px;">${renderPlatformOrderListHtml(existing ? existing.platforms : [])}</div>
+          <div class="label" style="margin-top:10px;">Add a platform</div>
+          <div class="movie-platform-picker" id="m-movie-platform-add-picker" style="margin-top:8px;">${renderPlatformAddPickerHtml(existing ? existing.platforms : [])}</div>
           <div class="label" style="margin-top:10px;">Add custom platform (press Enter)</div>
           <input type="text" id="m-movie-platform-custom" autocomplete="off"
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
@@ -437,7 +554,8 @@ function openMovieSheetMobile(existing) {
     });
   });
 
-  wireMoviePlatformPicker(document.getElementById("m-movie-platform-picker"), document.getElementById("m-movie-platform-custom"));
+  wireStarRatingEditor("m-movie");
+  wireMoviePlatformEditor("m-movie-platform");
 
   document.getElementById("m-save-movie-btn").addEventListener("click", async () => {
     const titleInput = document.getElementById("m-movie-title");
@@ -450,7 +568,8 @@ function openMovieSheetMobile(existing) {
     const payload = {
       title,
       media_type: selectedType,
-      platforms: getSelectedMoviePlatforms(document.getElementById("m-movie-platform-picker")),
+      platforms: getPlatformOrderSelected("m-movie-platform"),
+      rating: getStarRatingValue("m-movie") || null,
     };
 
     beginMutation();

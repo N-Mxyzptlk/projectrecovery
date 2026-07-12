@@ -404,7 +404,10 @@
         <div class="guitar-search-row">
           <div class="field" style="flex:1;margin:0;">
             <label>Search</label>
-            <input type="text" id="guitar-search-input" autocomplete="off" />
+            <div class="search-input-wrap">
+              <input type="search" id="guitar-search-input" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" />
+              <button type="button" class="search-clear-btn hidden" id="guitar-search-clear-btn" aria-label="Clear search">&times;</button>
+            </div>
           </div>
           <button type="button" class="btn-ghost" id="guitar-search-artist-toggle" title="Search by artist instead of title" style="align-self:flex-end;">By Artist</button>
         </div>

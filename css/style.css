@@ -734,11 +734,12 @@ input[type="number"] {
 
 .guitar-search-row input {
   flex: 1;
+  width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
-  padding: 10px 12px;
+  padding: 10px 32px 10px 12px;
   font-size: 14px;
 }
 
@@ -746,6 +747,71 @@ input[type="number"] {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+/* Clear ("x") button overlaid on the right edge of a search input — shown
+   only once there's text to clear (toggled via JS). Reused by any search
+   field, not just Guitar's. */
+.search-input-wrap {
+  position: relative;
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.search-clear-btn:hover {
+  color: var(--text);
+}
+
+input[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ============================================
+   5-star rating — shared by Guitar and Movies (js/uimodal.js)
+   ============================================ */
+.star-rating {
+  display: inline-flex;
+  gap: 2px;
+  line-height: 1;
+}
+
+.star-rating-star {
+  font-size: 15px;
+  color: var(--border);
+}
+
+.star-rating-star.lit {
+  color: var(--gold);
+}
+
+.star-rating-editor .star-rating-star {
+  cursor: pointer;
+  font-size: 18px;
+  transition: color 0.08s ease;
+}
+
+.rating-divider {
+  color: var(--border);
+  margin: 0 8px;
 }
 
 #guitar-search-artist-toggle.active {
@@ -2592,11 +2658,6 @@ input[type="number"] {
   opacity: 0.75;
 }
 
-.movie-platform-chip.active {
-  opacity: 1;
-  box-shadow: 0 0 0 2px currentColor inset;
-}
-
 .movie-platform-badge {
   display: inline-block;
   padding: 2px 10px;
@@ -2606,11 +2667,12 @@ input[type="number"] {
   border-radius: 999px;
 }
 
-.movie-platform-list {
+/* Title + type badge + platform badges all on one compact line */
+.movie-title-row {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 6px;
 }
 
 .movie-type-badge {
@@ -2622,7 +2684,51 @@ input[type="number"] {
   letter-spacing: 0.04em;
   border-radius: 999px;
   vertical-align: middle;
-  margin-left: 6px;
+}
+
+/* Reorderable "selected platforms" list — Add/Edit Movie form */
+.platform-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.platform-order-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.platform-order-row.dragging {
+  opacity: 0.6;
+  border-color: var(--accent);
+}
+
+.platform-order-handle {
+  cursor: grab;
+  color: var(--text-faint);
+  font-size: 15px;
+  touch-action: none;
+  user-select: none;
+}
+
+.platform-order-remove {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.platform-order-remove:hover {
+  color: var(--danger);
 }
 
 .movie-type-badge.type-movie {

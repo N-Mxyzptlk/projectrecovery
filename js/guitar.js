@@ -402,7 +402,7 @@ function renderGuitarSongRow(song) {
     <div class="card-row ${song.link ? "guitar-row-linked" : ""}" data-song-id="${song.id}" ${song.link ? 'title="Double-click to open link"' : ""}>
       <div>
         <div class="title">${escapeHtml(song.title)}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</div>
-        <div class="meta">${song.artist ? escapeHtml(song.artist) : "Unknown artist"}${song.note ? " · " + escapeHtml(song.note) : ""}</div>
+        <div class="meta">${song.artist ? escapeHtml(song.artist) : "Unknown artist"}${song.rating ? `<span class="rating-divider">|</span>${starRatingDisplayHtml(song.rating)}` : ""}${song.note ? " · " + escapeHtml(song.note) : ""}</div>
         ${guitarTagsHtml(song, escapeHtml)}
       </div>
       <div class="row-actions">
@@ -452,6 +452,10 @@ function wireGuitarActions() {
     gSearchQuery = e.target.value;
     renderGuitarSongsList();
   });
+  attachSearchClear(searchInput, document.getElementById("guitar-search-clear-btn"), () => {
+    gSearchQuery = "";
+    renderGuitarSongsList();
+  });
   attachArtistAutocomplete(searchInput, { onlyWhen: () => gSearchByArtist });
 
   const artistToggle = document.getElementById("guitar-search-artist-toggle");
@@ -477,6 +481,10 @@ function openAddSongModal(songId) {
         <input type="text" id="song-artist" autocomplete="off" value="${existing ? escapeHtml(existing.artist || "") : ""}" />
       </div>
       <div class="field">
+        <label>Rating</label>
+        ${renderStarRatingEditorHtml("song", existing ? existing.rating : 0)}
+      </div>
+      <div class="field">
         <label>Link</label>
         <input type="url" id="song-link" autocomplete="off" value="${existing ? escapeHtml(existing.link || "") : ""}" />
       </div>
@@ -497,6 +505,7 @@ function openAddSongModal(songId) {
 
   attachArtistAutocomplete(document.getElementById("song-artist"));
   wireTagDropdown("song-tags", document.getElementById("song-form"));
+  wireStarRatingEditor("song");
 
   document.getElementById("song-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -509,6 +518,7 @@ function openAddSongModal(songId) {
       link: document.getElementById("song-link").value.trim() || null,
       note: document.getElementById("song-note").value.trim() || null,
       tags: getTagDropdownSelected("song-tags"),
+      rating: getStarRatingValue("song") || null,
     };
 
     const { error } = existing
@@ -563,8 +573,11 @@ function renderGuitarMobileScreen() {
     <div class="m-stat-block" style="margin-bottom:10px;">
       <div class="label">Search</div>
       <div style="display:flex;gap:8px;margin-top:6px;">
-        <input type="text" id="m-guitar-search-input" autocomplete="off" value="${escapeHtmlMobile(gSearchQuery)}"
-               style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 12px;font-size:13px;" />
+        <div class="search-input-wrap" style="flex:1;">
+          <input type="search" id="m-guitar-search-input" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" value="${escapeHtmlMobile(gSearchQuery)}"
+                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 32px 10px 12px;font-size:13px;" />
+          <button type="button" class="search-clear-btn ${gSearchQuery ? "" : "hidden"}" id="m-guitar-search-clear-btn" aria-label="Clear search">&times;</button>
+        </div>
         <button type="button" class="m-chip ${gSearchByArtist ? "active" : ""}" id="m-guitar-search-artist-toggle">By Artist</button>
       </div>
     </div>
@@ -616,7 +629,7 @@ function renderGuitarSongRowMobile(song) {
       <div class="m-guitar-card">
         <div class="info">
           <div class="name">${escapeHtmlMobile(song.title)}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</div>
-          <div class="detail">${song.artist ? escapeHtmlMobile(song.artist) : "Unknown artist"}${song.note ? " · " + escapeHtmlMobile(song.note) : ""}</div>
+          <div class="detail">${song.artist ? escapeHtmlMobile(song.artist) : "Unknown artist"}${song.rating ? `<span class="rating-divider">|</span>${starRatingDisplayHtml(song.rating)}` : ""}${song.note ? " · " + escapeHtmlMobile(song.note) : ""}</div>
           ${guitarTagsHtml(song, escapeHtmlMobile)}
         </div>
         <div class="m-set-row-actions">
@@ -655,6 +668,10 @@ function wireGuitarMobileScreen() {
   const searchInput = document.getElementById("m-guitar-search-input");
   searchInput.addEventListener("input", (e) => {
     gSearchQuery = e.target.value;
+    renderGuitarMobileListOnly();
+  });
+  attachSearchClear(searchInput, document.getElementById("m-guitar-search-clear-btn"), () => {
+    gSearchQuery = "";
     renderGuitarMobileListOnly();
   });
   attachArtistAutocomplete(searchInput, { onlyWhen: () => gSearchByArtist });
@@ -796,6 +813,10 @@ function openAddSongSheetMobile(existing) {
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
         </div>
         <div class="m-stat-block" style="margin-bottom:14px;">
+          <div class="label">Rating</div>
+          <div style="margin-top:8px;">${renderStarRatingEditorHtml("m-song", existing ? existing.rating : 0)}</div>
+        </div>
+        <div class="m-stat-block" style="margin-bottom:14px;">
           <div class="label">Link</div>
           <input type="url" id="m-song-link" autocomplete="off" value="${existing ? escapeHtmlMobile(existing.link || "") : ""}"
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
@@ -817,6 +838,7 @@ function openAddSongSheetMobile(existing) {
 
   attachArtistAutocomplete(document.getElementById("m-song-artist"));
   wireTagDropdown("m-song-tags", overlay);
+  wireStarRatingEditor("m-song");
 
   document.getElementById("m-save-song-btn").addEventListener("click", async () => {
     const titleInput = document.getElementById("m-song-title");
@@ -831,6 +853,7 @@ function openAddSongSheetMobile(existing) {
       artist: document.getElementById("m-song-artist").value.trim() || null,
       link: document.getElementById("m-song-link").value.trim() || null,
       tags: getTagDropdownSelected("m-song-tags"),
+      rating: getStarRatingValue("m-song") || null,
     };
 
     beginMutation();

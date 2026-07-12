@@ -66,6 +66,32 @@ function uiAlert(message, opts) {
   return _uiDialog(message, { okText: "OK", ...opts, cancelText: null });
 }
 
+/** Wires a search input's clear ("x") button — shown only once there's
+ *  text, clicking it clears the value, refocuses the input, and calls
+ *  onClear so the caller can re-run its own filtering. Reusable by any
+ *  search field in the app. */
+function attachSearchClear(inputEl, clearBtnEl, onClear) {
+  inputEl.addEventListener("input", () => {
+    clearBtnEl.classList.toggle("hidden", inputEl.value.length === 0);
+  });
+  clearBtnEl.addEventListener("click", () => {
+    inputEl.value = "";
+    clearBtnEl.classList.add("hidden");
+    inputEl.focus();
+    onClear();
+  });
+}
+
+/** Escape blurs whatever text input/textarea currently has focus, site-wide
+ *  — a plain "get me out of this field" affordance. Doesn't fire inside the
+ *  confirm/alert/prompt modals above (their own capture-phase Escape
+ *  handler already runs first and removes the field from the DOM). */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const el = document.activeElement;
+  if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) el.blur();
+});
+
 /** Drop-in async replacement for window.prompt — resolves to the typed
  *  string, or null if cancelled (same contract as window.prompt). */
 function uiPrompt(message, { okText, cancelText, placeholder } = {}) {
@@ -111,4 +137,50 @@ function uiPrompt(message, { okText, cancelText, placeholder } = {}) {
       if (e.target === overlay) finish(null);
     });
   });
+}
+
+/* ============================================
+   5-star rating widget — shared by Guitar and Movies. A plain renderer for
+   read-only display, plus an interactive editor (hover previews up to the
+   hovered star, click selects) for Add/Edit forms. Both share the same
+   `.star-rating-star`/`.lit` classes so they render identically.
+   ============================================ */
+function starRatingDisplayHtml(rating) {
+  const r = rating || 0;
+  return `<span class="star-rating star-rating-display">${[1, 2, 3, 4, 5]
+    .map((n) => `<span class="star-rating-star ${n <= r ? "lit" : ""}">&#9733;</span>`)
+    .join("")}</span>`;
+}
+
+function renderStarRatingEditorHtml(idPrefix, rating) {
+  return `
+    <div class="star-rating star-rating-editor" id="${idPrefix}-rating-editor" data-rating="${rating || 0}">
+      ${[1, 2, 3, 4, 5].map((n) => `<span class="star-rating-star" data-value="${n}">&#9733;</span>`).join("")}
+    </div>`;
+}
+
+function wireStarRatingEditor(idPrefix) {
+  const container = document.getElementById(`${idPrefix}-rating-editor`);
+  const stars = [...container.querySelectorAll(".star-rating-star")];
+
+  function paint(value) {
+    stars.forEach((s) => s.classList.toggle("lit", parseInt(s.dataset.value, 10) <= value));
+  }
+
+  paint(parseInt(container.dataset.rating, 10) || 0);
+
+  stars.forEach((star) => {
+    star.addEventListener("mouseenter", () => paint(parseInt(star.dataset.value, 10)));
+    star.addEventListener("click", () => {
+      container.dataset.rating = star.dataset.value;
+      paint(parseInt(star.dataset.value, 10));
+    });
+  });
+
+  container.addEventListener("mouseleave", () => paint(parseInt(container.dataset.rating, 10) || 0));
+}
+
+function getStarRatingValue(idPrefix) {
+  const container = document.getElementById(`${idPrefix}-rating-editor`);
+  return parseInt(container.dataset.rating, 10) || 0;
 }
