@@ -177,7 +177,7 @@ function paymentStatusLabel(status) {
 function paymentBadgeHtml(payment, status) {
   if (status === "upcoming") {
     const isSubscription = payment.kind === "subscription";
-    return `<span class="payment-status-badge ${isSubscription ? "status-upcoming-subscription" : "status-upcoming-onetime"}">${isSubscription ? "Subscription" : "OTC"}</span>`;
+    return `<span class="payment-status-badge ${isSubscription ? "status-upcoming-subscription" : "status-upcoming-onetime"}">${isSubscription ? "SUB" : "OTC"}</span>`;
   }
   return `<span class="payment-status-badge status-${status}">${paymentStatusLabel(status)}</span>`;
 }

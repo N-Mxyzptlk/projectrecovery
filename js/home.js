@@ -221,6 +221,7 @@ async function loadHomeDashboard() {
     { app: "workout", label: "Workout" },
     { app: "finance", label: "Finance" },
     { app: "guitar", label: "Guitar" },
+    { app: "movies", label: "Movies" },
     { app: "admin", label: "Settings" },
   ]);
   wireHomeShortcuts(shortcutsEl, (appName) => switchApp(appName));
@@ -543,6 +544,7 @@ async function renderHomeScreenMobile() {
     { app: "workout", label: "Workout" },
     { app: "finance", label: "Finance" },
     { app: "guitar", label: "Guitar" },
+    { app: "movies", label: "Movies" },
   ]);
   wireHomeShortcuts(shortcutsEl, (appName) => switchMobileApp(appName));
 

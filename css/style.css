@@ -12,6 +12,11 @@
   --accent-glow: rgba(108, 99, 255, 0.35);
   --gold: #f5c542;
   --gold-dim: rgba(245, 197, 66, 0.15);
+  /* Softer/less saturated than --gold — --gold is meant to read as a
+     status/warning color (due-soon badges, dots); using that same bright,
+     saturated yellow for plain money amounts you're reading at a glance
+     made numbers harder to parse, not easier. */
+  --gold-soft: #d9b158;
   --energy: #ff5e3a;
   --text: #ececf5;
   /* --text-muted/--text-faint are lavender tints of --accent (#6c63ff),
@@ -1148,9 +1153,11 @@ input[type="number"] {
 }
 
 .payment-row .payment-amount {
-  font-family: var(--font-display);
-  font-size: 18px;
-  color: var(--gold);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  color: var(--gold-soft);
   margin-right: 8px;
 }
 
@@ -2134,8 +2141,10 @@ input[type="number"] {
 }
 
 .home-payment-amount {
-  color: var(--gold);
+  font-family: var(--font-mono);
+  color: var(--gold-soft);
   font-weight: 700;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
@@ -2464,6 +2473,99 @@ input[type="number"] {
   color: var(--text-faint);
   border: 1px solid var(--border);
   border-radius: 999px;
+}
+
+/* Multi-select tag dropdown — Add/Edit Song's Tags field */
+.tag-dropdown {
+  position: relative;
+}
+
+.tag-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+  text-align: left;
+}
+
+.tag-dropdown-trigger:hover {
+  border-color: var(--text-muted);
+}
+
+.tag-dropdown-panel {
+  margin-top: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.tag-dropdown-options {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.tag-dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tag-dropdown-option:hover {
+  background: var(--surface-hover);
+}
+
+.tag-dropdown-option.checked {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.tag-dropdown-checkbox {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tag-dropdown-option.checked .tag-dropdown-checkbox {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.tag-dropdown-add-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.tag-dropdown-add-row label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.tag-dropdown-add-row input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
 }
 
 /* ============================================

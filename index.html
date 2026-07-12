@@ -402,8 +402,11 @@
           <!-- filled by JS: distinct song tags, when any exist -->
         </div>
         <div class="guitar-search-row">
-          <input type="text" id="guitar-search-input" autocomplete="off" placeholder="Search songs..." />
-          <button type="button" class="btn-ghost" id="guitar-search-artist-toggle" title="Search by artist instead of title">By Artist</button>
+          <div class="field" style="flex:1;margin:0;">
+            <label>Search</label>
+            <input type="text" id="guitar-search-input" autocomplete="off" />
+          </div>
+          <button type="button" class="btn-ghost" id="guitar-search-artist-toggle" title="Search by artist instead of title" style="align-self:flex-end;">By Artist</button>
         </div>
         <div class="card" id="guitar-songs-list"></div>
       </section>

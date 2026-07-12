@@ -230,8 +230,8 @@ function renderFabStack() {
 }
 
 /* ============================================
-   App-switcher drawer — tap the edge handle, or swipe right from near
-   the left edge, to switch between Workout and Finance.
+   App-switcher drawer — tap the edge handle, or drag right from most of
+   the screen width, to open it; drag left (or tap the backdrop) to close.
    ============================================ */
 function wireAppDrawer() {
   document.getElementById("m-drawer-handle").addEventListener("click", openAppDrawer);
@@ -280,61 +280,130 @@ function switchMobileApp(appName) {
   touchLastUpdatedMobile();
 }
 
-/** Same delta-x-threshold drag pattern as attachJournalSwipe (below), but
- *  starting from anywhere in the left portion of the screen and opening the
- *  drawer rather than a card. Uses Pointer Events so it works for touch and
- *  mouse alike. */
+/** Drags the drawer open/closed live, following the finger the whole way
+ *  (not just watching for a threshold and then snapping) — same direct
+ *  transform-while-dragging + CSS-transition-on-release pattern as
+ *  attachGuitarSongSwipe (guitar.js). Two entry points share the drag
+ *  logic: `#mobile-app` starts an "opening" drag (closed -> open), and the
+ *  drawer overlay itself starts a "closing" drag (open -> closed) — they
+ *  have to be separate listeners because the overlay isn't a descendant of
+ *  #mobile-app, so pointer events on one never bubble to the other. */
 function attachEdgeSwipeDrawer() {
   // Fraction of screen width, not a fixed px count, so the reachable
-  // swipe-start zone scales with device size — "near the middle" rather
-  // than a thin edge sliver that's easy to miss one-handed. Computed fresh
-  // per pointerdown so rotating the device is picked up automatically.
-  const EDGE_ZONE_RATIO = 0.45;
-  const OPEN_THRESHOLD = 60; // px dragged right before the drawer commits to opening
+  // swipe-start zone scales with device size. Computed fresh per
+  // pointerdown so rotating the device is picked up automatically.
+  const OPEN_ZONE_RATIO = 0.8;
   const VERTICAL_CANCEL = 40; // px of vertical drift that cancels it (it's a scroll, not a swipe)
+  const DRAG_START_THRESHOLD = 4; // px before a pointerdown is treated as a drag rather than a tap
+  const COMMIT_RATIO = 0.35; // drag past 35% of the drawer's width before release keeps it open/closed
 
   // Elements that own their own horizontal swipe gesture (e.g. the journal
-  // card's swipe-to-reveal-actions) must win over the drawer swipe — a
-  // pointerdown that starts on one of these never counts as a drawer-open
-  // attempt, no matter how wide EDGE_ZONE_RATIO is.
+  // card's swipe-to-reveal-actions) must win over the drawer swipe.
   const SWIPE_OWNER_SELECTOR = ".m-swipe-owns-gesture";
+
+  const mainRoot = document.getElementById("mobile-app");
+  const overlay = document.getElementById("m-app-drawer-overlay");
+  const drawer = document.getElementById("m-app-drawer");
 
   let startX = null;
   let startY = null;
-  let active = false;
+  let dragging = false;
+  let committed = false;
+  let mode = null; // 'opening' | 'closing'
+  let activeRoot = null;
+  let pointerId = null;
+  let drawerWidth = 0;
 
-  const root = document.getElementById("mobile-app");
+  function setLiveProgress(progress) {
+    const clamped = Math.max(0, Math.min(1, progress));
+    drawer.style.transition = "none";
+    overlay.style.transition = "none";
+    drawer.style.transform = `translateX(${(clamped - 1) * 100}%)`;
+    overlay.style.opacity = String(clamped);
+  }
 
-  root.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(SWIPE_OWNER_SELECTOR)) return;
-    const edgeZonePx = window.innerWidth * EDGE_ZONE_RATIO;
-    if (e.clientX > edgeZonePx) return;
+  /** Hands off from the live drag to a real transition, animating from
+   *  wherever the drag left off rather than snapping — openAppDrawer/
+   *  closeAppDrawer defer the "open" class by a frame (needed when starting
+   *  from display:none), which would show a one-frame flash back to fully
+   *  closed here since the overlay is already visible mid-drag. */
+  function settle(open) {
+    drawer.style.transition = "";
+    overlay.style.transition = "";
+    if (open) {
+      overlay.classList.remove("hidden");
+      overlay.classList.add("open");
+      document.querySelectorAll(".m-drawer-app-item").forEach((i) => i.classList.toggle("active", i.dataset.app === mApp));
+    } else {
+      overlay.classList.remove("open");
+      setTimeout(() => overlay.classList.add("hidden"), 150);
+    }
+    drawer.style.transform = "";
+    overlay.style.opacity = "";
+  }
+
+  function startDrag(e, dragMode, rootEl) {
     startX = e.clientX;
     startY = e.clientY;
-    active = true;
-  });
+    dragging = true;
+    committed = false;
+    mode = dragMode;
+    activeRoot = rootEl;
+    pointerId = e.pointerId;
+    drawerWidth = drawer.getBoundingClientRect().width || window.innerWidth * 0.78;
+  }
 
-  root.addEventListener("pointermove", (e) => {
-    if (!active || startX === null) return;
+  function handleMove(e) {
+    if (!dragging) return;
     const dx = e.clientX - startX;
     const dy = Math.abs(e.clientY - startY);
-    if (dy > VERTICAL_CANCEL) {
-      active = false;
+    if (!committed) {
+      if (dy > VERTICAL_CANCEL) {
+        dragging = false;
+        return;
+      }
+      if (Math.abs(dx) < DRAG_START_THRESHOLD) return;
+      committed = true;
+      if (mode === "opening") overlay.classList.remove("hidden");
+      try {
+        activeRoot.setPointerCapture(pointerId);
+      } catch (err) {}
+    }
+    const progress = mode === "opening" ? dx / drawerWidth : 1 + dx / drawerWidth;
+    setLiveProgress(progress);
+  }
+
+  function handleRelease(e) {
+    if (!dragging) return;
+    dragging = false;
+    if (!committed) {
+      startX = null;
       return;
     }
-    if (dx > OPEN_THRESHOLD) {
-      active = false;
-      startX = null;
-      openAppDrawer();
-    }
-  });
-
-  const reset = () => {
-    active = false;
+    const dx = e.clientX - startX;
+    const progress = mode === "opening" ? dx / drawerWidth : 1 + dx / drawerWidth;
+    settle(progress > COMMIT_RATIO);
     startX = null;
-  };
-  root.addEventListener("pointerup", reset);
-  root.addEventListener("pointercancel", reset);
+  }
+
+  mainRoot.addEventListener("pointerdown", (e) => {
+    if (overlay.classList.contains("open")) return; // the overlay's own listener owns this state
+    if (e.target.closest(SWIPE_OWNER_SELECTOR)) return;
+    const edgeZonePx = window.innerWidth * OPEN_ZONE_RATIO;
+    if (e.clientX > edgeZonePx) return;
+    startDrag(e, "opening", mainRoot);
+  });
+  mainRoot.addEventListener("pointermove", handleMove);
+  mainRoot.addEventListener("pointerup", handleRelease);
+  mainRoot.addEventListener("pointercancel", handleRelease);
+
+  overlay.addEventListener("pointerdown", (e) => {
+    if (!overlay.classList.contains("open")) return;
+    startDrag(e, "closing", overlay);
+  });
+  overlay.addEventListener("pointermove", handleMove);
+  overlay.addEventListener("pointerup", handleRelease);
+  overlay.addEventListener("pointercancel", handleRelease);
 }
 
 async function loadStationsForMobile() {

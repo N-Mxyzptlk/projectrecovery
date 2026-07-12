@@ -36,21 +36,91 @@ function distinctGuitarTags() {
   return [...tags].sort((a, b) => a.localeCompare(b));
 }
 
-/** "acoustic, fingerstyle, , Acoustic" -> ["acoustic", "fingerstyle"] —
- *  trims, drops empties, and dedupes case-insensitively (keeping the first
- *  casing seen) so "Acoustic" and "acoustic" don't become two tags. */
-function parseGuitarTagsInput(raw) {
-  const seen = new Set();
-  const result = [];
-  raw.split(",").forEach((part) => {
-    const tag = part.trim();
-    if (!tag) return;
-    const key = tag.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    result.push(tag);
+/** Multi-select tag dropdown for the Add/Edit Song form — every tag used
+ *  anywhere in the catalogue shows up as a checkable option, and typing a
+ *  new name into the row at the bottom + pressing Enter adds it as a fresh,
+ *  already-checked option. `idPrefix` lets desktop ("song-tags") and
+ *  mobile ("m-song-tags") each get their own set of element ids. */
+function renderTagDropdownHtml(idPrefix, selected) {
+  const selectedSet = new Set(selected || []);
+  const allTags = [...new Set([...distinctGuitarTags(), ...selectedSet])].sort((a, b) => a.localeCompare(b));
+  const labelText = selectedSet.size === 0 ? "Select tags" : [...selectedSet].join(", ");
+
+  return `
+    <div class="tag-dropdown" id="${idPrefix}-dropdown">
+      <button type="button" class="tag-dropdown-trigger" id="${idPrefix}-trigger">
+        <span id="${idPrefix}-trigger-label">${escapeHtml(labelText)}</span>
+        <span class="custom-select-caret">&#9662;</span>
+      </button>
+      <div class="tag-dropdown-panel hidden" id="${idPrefix}-panel">
+        <div class="tag-dropdown-options" id="${idPrefix}-options">
+          ${allTags
+            .map(
+              (t) =>
+                `<div class="tag-dropdown-option ${selectedSet.has(t) ? "checked" : ""}" data-tag="${escapeHtml(t)}"><span class="tag-dropdown-checkbox"></span>${escapeHtml(t)}</div>`
+            )
+            .join("")}
+        </div>
+        <div class="tag-dropdown-add-row">
+          <label>New tag (press Enter to add)</label>
+          <input type="text" id="${idPrefix}-new-input" autocomplete="off" />
+        </div>
+      </div>
+    </div>`;
+}
+
+/** Wires open/close + selection for a dropdown rendered by
+ *  renderTagDropdownHtml. `containerEl` is the enclosing modal/sheet
+ *  element — the outside-click-closes listener lives on it (not
+ *  `document`), so it's torn down for free when the modal/sheet is
+ *  removed, rather than leaking a global listener on every open. */
+function wireTagDropdown(idPrefix, containerEl) {
+  const dropdown = document.getElementById(`${idPrefix}-dropdown`);
+  const trigger = document.getElementById(`${idPrefix}-trigger`);
+  const label = document.getElementById(`${idPrefix}-trigger-label`);
+  const panel = document.getElementById(`${idPrefix}-panel`);
+  const optionsEl = document.getElementById(`${idPrefix}-options`);
+  const newInput = document.getElementById(`${idPrefix}-new-input`);
+
+  function updateLabel() {
+    const selected = getTagDropdownSelected(idPrefix);
+    label.textContent = selected.length === 0 ? "Select tags" : selected.join(", ");
+  }
+
+  function wireOption(optEl) {
+    optEl.addEventListener("click", () => {
+      optEl.classList.toggle("checked");
+      updateLabel();
+    });
+  }
+  optionsEl.querySelectorAll(".tag-dropdown-option").forEach(wireOption);
+
+  trigger.addEventListener("click", () => panel.classList.toggle("hidden"));
+  containerEl.addEventListener("click", (e) => {
+    if (!dropdown.contains(e.target)) panel.classList.add("hidden");
   });
-  return result;
+
+  newInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const name = newInput.value.trim();
+    if (!name) return;
+    const exists = [...optionsEl.querySelectorAll(".tag-dropdown-option")].some((o) => o.dataset.tag.toLowerCase() === name.toLowerCase());
+    newInput.value = "";
+    if (exists) return;
+
+    const opt = document.createElement("div");
+    opt.className = "tag-dropdown-option checked";
+    opt.dataset.tag = name;
+    opt.innerHTML = `<span class="tag-dropdown-checkbox"></span>${escapeHtml(name)}`;
+    wireOption(opt);
+    optionsEl.appendChild(opt);
+    updateLabel();
+  });
+}
+
+function getTagDropdownSelected(idPrefix) {
+  return [...document.querySelectorAll(`#${idPrefix}-options .tag-dropdown-option.checked`)].map((o) => o.dataset.tag);
 }
 
 function applyGuitarSearch(songs, query, byArtist) {
@@ -174,11 +244,39 @@ async function loadGuitarSetlist() {
   if (setlist.length === 0) return uiAlert("Your setlist is empty — add songs to it first.");
   if (withLinks.length === 0) return uiAlert("No songs in your setlist have a saved link yet.");
 
-  withLinks.forEach((s) => window.open(s.link, "_blank"));
+  // Browsers only ever let the FIRST window.open from one click through —
+  // every one after that is silently blocked as a popup, which is exactly
+  // why only the top song was opening. Anything blocked gets a one-tap
+  // fallback list instead of just vanishing.
+  const blocked = [];
+  withLinks.forEach((s) => {
+    const win = window.open(s.link, "_blank");
+    if (!win) blocked.push(s);
+  });
 
-  if (withLinks.length < setlist.length) {
+  if (blocked.length > 0) {
+    showBlockedSetlistLinks(blocked);
+  } else if (withLinks.length < setlist.length) {
     await uiAlert(`Opened ${withLinks.length} of ${setlist.length} songs — the rest have no link saved.`);
   }
+}
+
+function showBlockedSetlistLinks(songs) {
+  openModal(`
+    <h3>Finish opening your setlist</h3>
+    <p style="color:var(--text-muted);font-size:13px;margin:-8px 0 16px;">Your browser blocked the rest as pop-ups — tap each to open it in a new tab.</p>
+    <div class="modal-actions" style="flex-direction:column;gap:8px;">
+      ${songs
+        .map(
+          (s) =>
+            `<a class="btn-ghost" style="display:block;text-align:center;text-decoration:none;" href="${escapeHtml(s.link)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a>`
+        )
+        .join("")}
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" onclick="closeModal()">Close</button>
+    </div>
+  `);
 }
 
 /** Re-renders whichever shell (desktop and/or mobile) is currently showing
@@ -387,8 +485,8 @@ function openAddSongModal(songId) {
         <input type="text" id="song-note" autocomplete="off" value="${existing ? escapeHtml(existing.note || "") : ""}" />
       </div>
       <div class="field">
-        <label>Tags (comma separated)</label>
-        <input type="text" id="song-tags" autocomplete="off" placeholder="e.g. acoustic, fingerstyle" value="${existing ? escapeHtml((existing.tags || []).join(", ")) : ""}" />
+        <label>Tags</label>
+        ${renderTagDropdownHtml("song-tags", existing ? existing.tags : [])}
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
@@ -398,6 +496,7 @@ function openAddSongModal(songId) {
   `);
 
   attachArtistAutocomplete(document.getElementById("song-artist"));
+  wireTagDropdown("song-tags", document.getElementById("song-form"));
 
   document.getElementById("song-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -409,7 +508,7 @@ function openAddSongModal(songId) {
       artist: document.getElementById("song-artist").value.trim() || null,
       link: document.getElementById("song-link").value.trim() || null,
       note: document.getElementById("song-note").value.trim() || null,
-      tags: parseGuitarTagsInput(document.getElementById("song-tags").value),
+      tags: getTagDropdownSelected("song-tags"),
     };
 
     const { error } = existing
@@ -461,10 +560,13 @@ function renderGuitarMobileScreen() {
         </div>`
       : ""}
 
-    <div style="display:flex;gap:8px;margin:10px 0;">
-      <input type="text" id="m-guitar-search-input" autocomplete="off" placeholder="Search songs..." value="${escapeHtmlMobile(gSearchQuery)}"
-             style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 12px;font-size:13px;" />
-      <button type="button" class="m-chip ${gSearchByArtist ? "active" : ""}" id="m-guitar-search-artist-toggle">By Artist</button>
+    <div class="m-stat-block" style="margin-bottom:10px;">
+      <div class="label">Search</div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <input type="text" id="m-guitar-search-input" autocomplete="off" value="${escapeHtmlMobile(gSearchQuery)}"
+               style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 12px;font-size:13px;" />
+        <button type="button" class="m-chip ${gSearchByArtist ? "active" : ""}" id="m-guitar-search-artist-toggle">By Artist</button>
+      </div>
     </div>
 
     <div class="m-set-list-label" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
@@ -699,9 +801,8 @@ function openAddSongSheetMobile(existing) {
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
         </div>
         <div class="m-stat-block" style="margin-bottom:14px;">
-          <div class="label">Tags (comma separated)</div>
-          <input type="text" id="m-song-tags" autocomplete="off" placeholder="e.g. acoustic, fingerstyle" value="${existing ? escapeHtmlMobile((existing.tags || []).join(", ")) : ""}"
-                 style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
+          <div class="label">Tags</div>
+          <div style="margin-top:8px;">${renderTagDropdownHtml("m-song-tags", existing ? existing.tags : [])}</div>
         </div>
       </div>
       <div class="m-sheet-footer">
@@ -715,6 +816,7 @@ function openAddSongSheetMobile(existing) {
   });
 
   attachArtistAutocomplete(document.getElementById("m-song-artist"));
+  wireTagDropdown("m-song-tags", overlay);
 
   document.getElementById("m-save-song-btn").addEventListener("click", async () => {
     const titleInput = document.getElementById("m-song-title");
@@ -728,7 +830,7 @@ function openAddSongSheetMobile(existing) {
       title,
       artist: document.getElementById("m-song-artist").value.trim() || null,
       link: document.getElementById("m-song-link").value.trim() || null,
-      tags: parseGuitarTagsInput(document.getElementById("m-song-tags").value),
+      tags: getTagDropdownSelected("m-song-tags"),
     };
 
     beginMutation();

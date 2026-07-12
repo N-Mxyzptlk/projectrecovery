@@ -13,11 +13,6 @@ const MOVIE_PLATFORM_COLORS = {
   "Disney+": "#113CCF",
   "HBO Max": "#9B2FAE",
   "Apple TV+": "#FFFFFF", // special-cased in moviePlatformBadgeStyle — plain black+white reads better than a translucent-black tint
-  "Hulu": "#1CE783",
-  "Paramount+": "#0064FF",
-  "YouTube": "#FF0000",
-  "Crunchyroll": "#F47521",
-  "Peacock": "#6E46AE",
 };
 const MOVIE_PLATFORM_PRESETS = Object.keys(MOVIE_PLATFORM_COLORS);
 
@@ -204,7 +199,8 @@ function openMovieModal(movieId) {
       <div class="field">
         <label>Platforms</label>
         <div class="movie-platform-picker" id="movie-platform-picker">${renderMoviePlatformPickerHtml(existing ? existing.platforms : [])}</div>
-        <input type="text" id="movie-platform-custom" autocomplete="off" placeholder="Add another platform and press Enter" style="margin-top:8px;" />
+        <label style="margin-top:10px;">Add custom platform (press Enter)</label>
+        <input type="text" id="movie-platform-custom" autocomplete="off" />
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-ghost" onclick="closeModal()">Cancel</button>
@@ -418,7 +414,8 @@ function openMovieSheetMobile(existing) {
         <div class="m-stat-block" style="margin-bottom:14px;">
           <div class="label">Platforms</div>
           <div class="movie-platform-picker" id="m-movie-platform-picker" style="margin-top:8px;">${renderMoviePlatformPickerHtml(existing ? existing.platforms : [])}</div>
-          <input type="text" id="m-movie-platform-custom" autocomplete="off" placeholder="Add another platform and press Enter"
+          <div class="label" style="margin-top:10px;">Add custom platform (press Enter)</div>
+          <input type="text" id="m-movie-platform-custom" autocomplete="off"
                  style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
         </div>
       </div>
