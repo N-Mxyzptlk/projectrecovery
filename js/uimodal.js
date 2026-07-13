@@ -184,3 +184,243 @@ function getStarRatingValue(idPrefix) {
   const container = document.getElementById(`${idPrefix}-rating-editor`);
   return parseInt(container.dataset.rating, 10) || 0;
 }
+
+/** Generic vertical drag-to-reorder for one row within containerEl. Wires
+ *  a single row; call once per row (including ones added later), not
+ *  re-run over the whole list, so listeners never stack. Shared by the
+ *  Movies platform-order picker, the Guitar/Movies catalogue lists, and
+ *  the Settings app-module editor. `onDrop(row)` fires once, after a real
+ *  drag (not a plain tap) ends, so callers can persist the new order.
+ *
+ *  Move/up/cancel are tracked on `document`, not the handle itself — the
+ *  row gets physically reordered in the DOM as you drag past a neighbor,
+ *  and moving an element mid-drag can silently release its pointer
+ *  capture, which made the handle stop receiving its own pointerup
+ *  (drag would get "stuck"). Listening on document is immune to that.
+ *
+ *  The dragged row never moves in the DOM until drop — it just follows
+ *  the finger via `transform: translateY()` (rAF-batched) plus a slight
+ *  scale/shadow "pop out". Displaced siblings animate out of the way via
+ *  the same transform, computed once per frame from a position snapshot
+ *  taken at drag start (a FLIP animation), so nothing teleports. */
+function wireDragHandle(containerEl, row, { handleSelector = ".drag-handle", onDrop } = {}) {
+  const handle = row.querySelector(handleSelector);
+  if (!handle) return;
+
+  let dragging = false;
+  let moved = false;
+  let startY = 0;
+  let rowHeight = 0;
+  let originalIndex = -1;
+  let allRows = [];
+  let currentShift = 0;
+  let rafId = null;
+  let pendingDy = 0;
+
+  function applyShift(shift) {
+    if (shift === currentShift) return;
+    currentShift = shift;
+    allRows.forEach((sib, i) => {
+      if (sib === row) return;
+      let sibShift = 0;
+      if (shift > 0 && i > originalIndex && i <= originalIndex + shift) sibShift = -1;
+      else if (shift < 0 && i < originalIndex && i >= originalIndex + shift) sibShift = 1;
+      sib.style.transition = "transform 0.15s ease";
+      sib.style.transform = sibShift ? `translateY(${sibShift * rowHeight}px)` : "";
+    });
+  }
+
+  function applyDrag(dy) {
+    row.style.transform = `translateY(${dy}px) scale(1.03)`;
+    const maxShift = allRows.length - 1 - originalIndex;
+    const minShift = -originalIndex;
+    applyShift(Math.max(minShift, Math.min(maxShift, Math.round(dy / rowHeight))));
+  }
+
+  function onPointerMove(e) {
+    if (!dragging) return;
+    pendingDy = e.clientY - startY;
+    if (Math.abs(pendingDy) > 3) moved = true;
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      applyDrag(pendingDy);
+    });
+  }
+
+  function onPointerEnd() {
+    if (!dragging) return;
+    dragging = false;
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerEnd);
+    document.removeEventListener("pointercancel", onPointerEnd);
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+
+    const targetIndex = Math.max(0, Math.min(allRows.length - 1, originalIndex + currentShift));
+
+    // Finish sliding the dragged row the rest of the way into its target
+    // slot — siblings are already sitting at their shifted position from
+    // the drag itself — then, once that settle animation completes,
+    // reorder the DOM to match and clear every inline style in one
+    // synchronous step. Since the DOM's new natural layout exactly
+    // matches what's already rendered, nothing visibly jumps.
+    row.style.transition = "transform 0.15s ease";
+    row.style.transform = `translateY(${currentShift * rowHeight}px) scale(1.03)`;
+
+    setTimeout(() => {
+      allRows.forEach((r) => {
+        r.style.transition = "";
+        r.style.transform = "";
+      });
+      row.classList.remove("dragging");
+      if (targetIndex !== originalIndex) {
+        const ref = targetIndex < originalIndex ? allRows[targetIndex] : allRows[targetIndex].nextSibling;
+        containerEl.insertBefore(row, ref);
+      }
+      if (moved && onDrop) onDrop(row);
+    }, 160);
+  }
+
+  handle.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    moved = false;
+    startY = e.clientY;
+    rowHeight = row.getBoundingClientRect().height || 1;
+    allRows = [...containerEl.children];
+    originalIndex = allRows.indexOf(row);
+    currentShift = 0;
+    row.style.transition = "none";
+    row.classList.add("dragging");
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerEnd);
+    document.addEventListener("pointercancel", onPointerEnd);
+  });
+}
+
+/** Show/hide + reorder editor for the app-modules list — reads/writes
+ *  profiles.nav_apps via resolvedNavApps()/saveNavAppsPref() (dbclient.js),
+ *  the same preference the desktop sidebar and mobile drawer read at boot.
+ *  Shared by desktop's Settings page and mobile's Settings sheet, each
+ *  rendering into their own container id and passing their own `onSaved`
+ *  callback to refresh whatever nav UI they own (sidebar, drawer, Home
+ *  shortcuts) immediately after a change — no reload needed on the same
+ *  device, though a *different* device's already-open session won't see
+ *  it until it re-reads the preference (that's what the drawer's refresh
+ *  button, mobile.js, is for). */
+function renderNavModuleEditor(containerId, onSaved) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+
+  // Start from the current preference (visible entries in their saved
+  // order) if there is one, else every module visible in its built-in
+  // order; append any module missing from a saved preference (e.g. a newly
+  // added app) as visible, so it isn't silently dropped from the editor.
+  const base = navAppsPref && navAppsPref.length > 0
+    ? navAppsPref.filter((p) => APP_MODULES.some((m) => m.app === p.app))
+    : APP_MODULES.map((m) => ({ app: m.app, visible: true }));
+  APP_MODULES.forEach((m) => {
+    if (!base.some((p) => p.app === m.app)) base.push({ app: m.app, visible: true });
+  });
+
+  box.innerHTML = base
+    .map(({ app, visible }) => {
+      const label = APP_MODULES.find((m) => m.app === app)?.label || app;
+      return `
+      <div class="nav-module-row" data-app="${app}">
+        <span class="drag-handle" title="Drag to reorder">&#9776;</span>
+        <span class="nav-module-label">${label}</span>
+        <label class="nav-module-toggle">
+          <input type="checkbox" ${visible ? "checked" : ""} />
+          <span class="nav-module-toggle-track"></span>
+        </label>
+      </div>`;
+    })
+    .join("");
+
+  async function persist() {
+    const pref = [...box.querySelectorAll(".nav-module-row")].map((row) => ({
+      app: row.dataset.app,
+      visible: row.querySelector('input[type="checkbox"]').checked,
+    }));
+    await saveNavAppsPref(pref); // defined in dbclient.js
+    if (onSaved) onSaved();
+  }
+
+  box.querySelectorAll(".nav-module-row").forEach((row) => {
+    wireDragHandle(box, row, { onDrop: persist });
+    row.querySelector('input[type="checkbox"]').addEventListener("change", async (e) => {
+      const anyChecked = [...box.querySelectorAll('input[type="checkbox"]')].some((c) => c.checked);
+      if (!anyChecked) {
+        e.target.checked = true; // don't allow hiding the last visible module
+        await uiAlert("At least one app module must stay visible.");
+        return;
+      }
+      persist();
+    });
+  });
+}
+
+/* ============================================
+   Mobile press-state false positives — on touch devices, CSS :active
+   matches from the moment of touchstart, the exact same event that begins
+   a scroll, and mobile browsers don't reliably clear it once a touch
+   turns out to be a scroll rather than a tap. That's what makes buttons
+   visually "light up" as a finger just passes over them while scrolling.
+   Every :active rule's own look stays untouched — this only changes when
+   it's allowed to show. Tracks movement since touchstart and, the moment
+   it crosses a small threshold, forces the browser to drop :active
+   matching for that element by yanking pointer-events for one frame
+   (a documented workaround: toggling pointer-events forces a hit-test
+   recompute, which is what actually un-matches :active — there's no
+   direct DOM API to just tell the browser "stop matching :active here").
+   ============================================ */
+(function () {
+  const PRESSABLE_SELECTOR =
+    "button, [class*='btn'], [class*='chip'], [class*='tab'], [class*='item'], [class*='row'], [class*='fab'], [class*='handle'], [class*='tile'], [class*='action'], [class*='nub']";
+  const MOVE_THRESHOLD = 10;
+
+  let startX = 0;
+  let startY = 0;
+  let pressedEl = null;
+
+  function cancelPressedState() {
+    if (!pressedEl) return;
+    const el = pressedEl;
+    pressedEl = null;
+    el.style.pointerEvents = "none";
+    requestAnimationFrame(() => {
+      el.style.pointerEvents = "";
+    });
+  }
+
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      pressedEl = e.target.closest(PRESSABLE_SELECTOR);
+    },
+    { passive: true }
+  );
+
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!pressedEl) return;
+      const touch = e.touches[0];
+      if (Math.abs(touch.clientX - startX) > MOVE_THRESHOLD || Math.abs(touch.clientY - startY) > MOVE_THRESHOLD) {
+        cancelPressedState();
+      }
+    },
+    { passive: true }
+  );
+
+  document.addEventListener("touchend", () => {
+    pressedEl = null;
+  });
+  document.addEventListener("touchcancel", cancelPressedState);
+})();

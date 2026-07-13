@@ -15,6 +15,10 @@ async function loadAdmin() {
   enhanceSelect("admin-auto-logout");
   loadAdminRowCounts();
   loadAdminDatabaseSize();
+
+  // Shared editor (uimodal.js) — mobile's Settings sheet renders the same
+  // thing into its own container id, with its own refresh callback.
+  renderNavModuleEditor("admin-nav-module-list", () => renderSidebarNavItems());
 }
 
 function wireAdminActions() {
@@ -175,7 +179,7 @@ async function exportAllData() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `nul-systems-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `nlab-environment-backup-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();

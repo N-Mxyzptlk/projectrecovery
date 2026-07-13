@@ -334,6 +334,17 @@ input[type="number"] {
   border-color: var(--text-muted);
 }
 
+/* The label span needs min-width:0 to override flex's default
+   min-width:auto — without it, a flex child never shrinks below its
+   content size, so text-overflow:ellipsis silently never kicks in and
+   long option text (e.g. a long category name) just clips at the edge. */
+.custom-select-trigger > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .date-picker-caret,
 .custom-select-caret {
   color: var(--text-muted);
@@ -1385,6 +1396,14 @@ input[type="search"]::-webkit-search-decoration {
   gap: 4px;
 }
 
+.fin-cal-grid {
+  /* Mobile swipes month-to-month over this grid — hand horizontal drags
+     entirely to JS (same reasoning as #mobile-app / the drawer) while
+     still letting vertical scroll pass through normally. No effect on
+     desktop, which doesn't have touch gestures to arbitrate. */
+  touch-action: pan-y;
+}
+
 .fin-cal-weekdays {
   font-size: 10px;
   color: var(--text-faint);
@@ -1679,6 +1698,82 @@ input[type="search"]::-webkit-search-decoration {
   color: var(--text);
 }
 
+/* App modules editor — Settings */
+.nav-module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nav-module-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.nav-module-row.dragging {
+  position: relative;
+  z-index: 20;
+  border-color: var(--accent);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.nav-module-label {
+  flex: 1;
+  font-size: 14px;
+}
+
+.nav-module-toggle {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.nav-module-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.nav-module-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+
+.nav-module-toggle-track::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  background: var(--text);
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+
+.nav-module-toggle input:checked + .nav-module-toggle-track {
+  background: var(--accent);
+}
+
+.nav-module-toggle input:checked + .nav-module-toggle-track::before {
+  transform: translateX(16px);
+  background: #fff;
+}
+
 .stat-card .value .unit {
   font-size: 13px;
   color: var(--text-muted);
@@ -1701,7 +1796,7 @@ input[type="search"]::-webkit-search-decoration {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 0;
+  padding: 14px 10px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -2023,6 +2118,7 @@ input[type="search"]::-webkit-search-decoration {
 
 .home-todo-form {
   display: flex;
+  align-items: center; /* without this, flex's default stretch forces the button to match the input's height regardless of the button's own (thinner) padding */
   gap: 8px;
   margin-bottom: 14px;
 }
@@ -2241,6 +2337,59 @@ input[type="search"]::-webkit-search-decoration {
   font-family: var(--font-display);
   font-size: 15px;
   letter-spacing: 0.04em;
+}
+
+.home-balance-reminder {
+  /* Descending hierarchy with the clock/date above it: clock (40px
+     mobile) > date (12px) > this (11px). Color is set dynamically by
+     renderHomeBalanceReminder() (js/home.js) via the classes below —
+     under $10 is red, under $50 is yellow, otherwise green. */
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.home-balance-reminder.balance-red {
+  color: var(--danger);
+}
+
+.home-balance-reminder.balance-yellow {
+  color: var(--gold);
+}
+
+.home-balance-reminder.balance-green {
+  color: var(--success);
+}
+
+/* Home quick action — log an expense in one row: amount, category, Log.
+   No sheet, no note field — minimal taps by design. */
+.quick-expense-log-row {
+  display: flex;
+  align-items: center; /* without this, flex's default stretch forces the button to match the input/select height regardless of the button's own (thinner) padding */
+  gap: 8px;
+}
+
+.quick-expense-log-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.quick-expense-log-row select,
+.quick-expense-log-row .custom-select-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-expense-log-row .btn-accent {
+  flex-shrink: 0;
 }
 
 /* ============================================
@@ -2704,8 +2853,10 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .platform-order-row.dragging {
-  opacity: 0.6;
+  position: relative;
+  z-index: 20;
   border-color: var(--accent);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
 .platform-order-handle {
@@ -2714,6 +2865,29 @@ input[type="search"]::-webkit-search-decoration {
   font-size: 15px;
   touch-action: none;
   user-select: none;
+}
+
+/* Generic drag-to-reorder handle — Guitar catalogue rows, Movies list rows */
+.drag-handle {
+  cursor: grab;
+  color: var(--text-faint);
+  font-size: 16px;
+  touch-action: none;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.drag-handle:hover {
+  color: var(--text-muted);
+}
+
+.card-row.dragging,
+.m-guitar-swipe-wrap.dragging {
+  position: relative;
+  z-index: 20;
+  background: var(--surface-raised);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
 }
 
 .platform-order-remove {

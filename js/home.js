@@ -217,11 +217,12 @@ async function loadHomeDashboard() {
   startHomeClock("home-clock", "home-date");
 
   const shortcutsEl = document.getElementById("home-shortcuts");
+  // Settings isn't part of the app-modules list (it's where that list gets
+  // edited, so it can't be hidden) — always appended after whatever the
+  // user has visible/ordered. "home" itself is excluded since a Home
+  // shortcut on the Home page would just be pointless.
   shortcutsEl.innerHTML = renderHomeShortcutsHtml([
-    { app: "workout", label: "Workout" },
-    { app: "finance", label: "Finance" },
-    { app: "guitar", label: "Guitar" },
-    { app: "movies", label: "Movies" },
+    ...resolvedNavApps().filter((m) => m.app !== "home"),
     { app: "admin", label: "Settings" },
   ]);
   wireHomeShortcuts(shortcutsEl, (appName) => switchApp(appName));
@@ -509,6 +510,7 @@ async function renderHomeScreenMobile() {
     <div class="home-hero home-hero-mobile">
       <div class="home-clock" id="m-home-clock">00:00:00</div>
       <div class="home-date" id="m-home-date">—</div>
+      <div class="home-balance-reminder" id="m-home-balance">Balance: —</div>
     </div>
 
     <div class="home-panel">
@@ -532,21 +534,28 @@ async function renderHomeScreenMobile() {
     </div>
 
     <div class="home-panel">
-      <div class="home-panel-header"><h4>Shortcuts</h4></div>
-      <div class="home-shortcuts" id="m-home-shortcuts"></div>
+      <div class="home-panel-header"><h4>Finance</h4></div>
+      <div class="quick-expense-log">
+        <div class="quick-expense-log-row">
+          <input type="number" step="0.01" min="0.01" id="m-quick-expense-amount" inputmode="decimal" autocomplete="off" placeholder="Amount" />
+          <select id="m-quick-expense-category"><option value="">Uncategorized</option></select>
+          <button type="button" class="btn-accent" id="m-quick-expense-log-btn">Log</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="home-panel">
+      <div class="home-panel-header"><h4>Workout</h4></div>
+      <button type="button" class="home-shortcut" id="m-quick-start-workout-btn" style="width:100%;">
+        <div class="home-shortcut-label">Start Workout</div>
+      </button>
     </div>
   `;
 
   startHomeClock("m-home-clock", "m-home-date");
 
-  const shortcutsEl = document.getElementById("m-home-shortcuts");
-  shortcutsEl.innerHTML = renderHomeShortcutsHtml([
-    { app: "workout", label: "Workout" },
-    { app: "finance", label: "Finance" },
-    { app: "guitar", label: "Guitar" },
-    { app: "movies", label: "Movies" },
-  ]);
-  wireHomeShortcuts(shortcutsEl, (appName) => switchMobileApp(appName));
+  document.getElementById("m-quick-start-workout-btn").addEventListener("click", quickStartWorkoutFromHome);
+  document.getElementById("m-quick-expense-log-btn").addEventListener("click", submitQuickExpenseLog);
 
   document.getElementById("m-home-todo-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -556,11 +565,80 @@ async function renderHomeScreenMobile() {
     renderMobileHomeTodoPanel();
   });
 
-  await Promise.all([loadTodos(), loadFinancePaymentsCache(), loadFinanceRecurringIncomeCache()]);
+  const [, , , , balance] = await Promise.all([
+    loadTodos(),
+    loadFinancePaymentsCache(),
+    loadFinanceRecurringIncomeCache(),
+    loadFinanceCategories(),
+    loadFinanceBalanceSummary(), // defined in finance.js — lightweight amount-only fetch
+  ]);
   if (mApp !== "home") return; // user navigated away while this was loading
 
   renderMobileHomeTodoPanel();
   renderMobileHomePaymentPanel();
+  populateQuickExpenseCategorySelect();
+  renderHomeBalanceReminder(balance);
+}
+
+/** Colors the Home balance line by how much runway is left: red under $10,
+ *  yellow under $50, green otherwise. */
+function renderHomeBalanceReminder(balance) {
+  const el = document.getElementById("m-home-balance");
+  if (!el) return;
+  el.textContent = `Balance: ${formatMoney(balance)}`;
+  el.classList.remove("balance-red", "balance-yellow", "balance-green");
+  el.classList.add(balance < 10 ? "balance-red" : balance < 50 ? "balance-yellow" : "balance-green");
+}
+
+/** Fills in the quick-log category options once financeCategoriesCache is
+ *  loaded, then skins the <select> — done after the fact (not inline in
+ *  the initial render) since categories load in parallel with everything
+ *  else on Home, and enhanceSelect needs the real <option>s to exist first. */
+function populateQuickExpenseCategorySelect() {
+  const select = document.getElementById("m-quick-expense-category");
+  if (!select) return;
+  select.innerHTML =
+    `<option value="">Uncategorized</option>` +
+    financeCategoriesCache.map((c) => `<option value="${c.id}">${escapeHtmlMobile(c.name)}</option>`).join("");
+  enhanceSelect("m-quick-expense-category");
+}
+
+/** One tap to log: amount + category, straight from Home — no sheet, no
+ *  note field, no navigating away. */
+async function submitQuickExpenseLog() {
+  const amountInput = document.getElementById("m-quick-expense-amount");
+  const amount = parseFloat(amountInput.value);
+  if (!amount || amount <= 0) return showFieldRequired(amountInput);
+
+  const categoryId = document.getElementById("m-quick-expense-category").value || null;
+  const btn = document.getElementById("m-quick-expense-log-btn");
+  btn.disabled = true;
+  btn.textContent = "...";
+
+  beginMutation();
+  const { error } = await supabaseClient.from("finance_expenses").insert({
+    amount,
+    category_id: categoryId,
+    occurred_at: new Date().toISOString(),
+    note: null,
+  });
+  endMutation();
+
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = "Log";
+    await uiAlert("Failed to log expense: " + error.message);
+    return;
+  }
+
+  amountInput.value = "";
+  btn.textContent = "Logged!";
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = "Log";
+  }, 1200);
+
+  renderHomeBalanceReminder(await loadFinanceBalanceSummary());
 }
 
 function renderMobileHomeTodoPanel() {
@@ -582,3 +660,23 @@ function renderMobileHomePaymentPanel() {
   el.innerHTML = renderReminderListHtml(upcomingPaymentReminders(), upcomingIncomeReminders(), escapeHtmlMobile);
   wireHomeReminderIncomeClicks(el, renderMobileHomePaymentPanel);
 }
+
+/* ============================================
+   Home quick actions (mobile only) — one-tap Start Workout, and a
+   stripped-down Log Expense (amount + category, no note/date) for when
+   you just want the number down fast.
+   ============================================ */
+
+/** Switches to Workout and starts a session immediately if none is
+ *  active — mirrors tapping "Start Workout" from the workout screen
+ *  itself, just automated. loadActiveWorkout() renders the start prompt
+ *  (creating #m-start-btn) when there's no active session, which is what
+ *  startWorkout() then needs to already exist in the DOM. */
+async function quickStartWorkoutFromHome() {
+  mApp = "workout";
+  renderFabStack();
+  await loadActiveWorkout(); // defined in mobile.js
+  if (!mCurrentWorkout) await startWorkout(); // defined in mobile.js
+  touchLastUpdatedMobile();
+}
+

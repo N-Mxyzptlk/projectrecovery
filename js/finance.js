@@ -456,15 +456,17 @@ function renderFinanceCalendarHtml(payments, year, month) {
 function wireFinanceCalendar(containerEl, state, mode) {
   if (!containerEl) return;
 
+  function navigateMonth(dir) {
+    state.month += dir;
+    if (state.month < 0) { state.month = 11; state.year--; }
+    else if (state.month > 11) { state.month = 0; state.year++; }
+    rerender();
+  }
+
   function rerender() {
     containerEl.innerHTML = renderFinanceCalendarHtml(financePaymentsCache, state.year, state.month);
     containerEl.querySelectorAll(".fin-cal-nav").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        state.month += parseInt(btn.dataset.dir, 10);
-        if (state.month < 0) { state.month = 11; state.year--; }
-        else if (state.month > 11) { state.month = 0; state.year++; }
-        rerender();
-      });
+      btn.addEventListener("click", () => navigateMonth(parseInt(btn.dataset.dir, 10)));
     });
 
     const dueItemsByDay = computeDueItemsByDay(financePaymentsCache, state.year, state.month);
@@ -476,6 +478,79 @@ function wireFinanceCalendar(containerEl, state, mode) {
   }
 
   rerender();
+
+  // Mobile also gets swipe-to-change-month, on top of the prev/next
+  // buttons both modes already have. Wired once on containerEl (which
+  // persists across rerenders — only its innerHTML gets replaced), not on
+  // the grid itself, since the grid is a fresh element every navigation.
+  if (mode === "mobile") attachCalendarSwipe(containerEl, navigateMonth);
+}
+
+/** Drags the calendar grid to change months — follows the finger, then
+ *  either commits to prev/next (sliding the rest of the way off-screen,
+ *  then swapping in the new month) or springs back if released short of
+ *  the threshold. Cancels itself (same as attachCalendarDayHold's own
+ *  guard) the moment real movement happens on a day cell, so a swipe
+ *  starting on a due-date cell cancels that cell's hold-to-preview timer
+ *  instead of fighting it. */
+function attachCalendarSwipe(containerEl, navigateMonth) {
+  const COMMIT_RATIO = 0.2; // drag past 20% of the grid's width to commit
+  const VERTICAL_CANCEL = 30;
+  const DRAG_START_THRESHOLD = 4;
+
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+  let committed = false;
+  let containerWidth = 0;
+  let gridEl = null;
+
+  containerEl.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest(".fin-cal-grid")) return;
+    dragging = true;
+    committed = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    containerWidth = containerEl.getBoundingClientRect().width || 1;
+    gridEl = containerEl.querySelector(".fin-cal-grid");
+  });
+
+  containerEl.addEventListener("pointermove", (e) => {
+    if (!dragging || !gridEl) return;
+    const dx = e.clientX - startX;
+    const dy = Math.abs(e.clientY - startY);
+    if (!committed) {
+      if (dy > VERTICAL_CANCEL) {
+        dragging = false;
+        return;
+      }
+      if (Math.abs(dx) < DRAG_START_THRESHOLD) return;
+      committed = true;
+      gridEl.style.transition = "none";
+    }
+    gridEl.style.transform = `translateX(${dx}px)`;
+  });
+
+  const onRelease = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    if (!committed || !gridEl) return;
+
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) < containerWidth * COMMIT_RATIO) {
+      gridEl.style.transition = "transform 0.15s ease";
+      gridEl.style.transform = "translateX(0)";
+      return;
+    }
+
+    const dir = dx < 0 ? 1 : -1; // dragged left -> next month, dragged right -> previous
+    gridEl.style.transition = "transform 0.15s ease";
+    gridEl.style.transform = `translateX(${dir > 0 ? -containerWidth : containerWidth}px)`;
+    setTimeout(() => navigateMonth(dir), 150);
+  };
+
+  containerEl.addEventListener("pointerup", onRelease);
+  containerEl.addEventListener("pointercancel", onRelease);
 }
 
 /* ---- Desktop: hover-and-hold a date to preview what's due ---- */

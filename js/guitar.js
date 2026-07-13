@@ -16,9 +16,30 @@ let gSearchByArtist = false; // toggle: off matches title+artist, on matches art
 let gTagFilter = null; // selected tag, or null for "any tag" — combines with gFilter and search rather than replacing them
 
 async function loadGuitarSongsCache() {
-  const { data, error } = await supabaseClient.from("guitar_songs").select("*").order("created_at", { ascending: false });
+  const { data, error } = await supabaseClient
+    .from("guitar_songs")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false });
   if (!error) guitarSongsCache = data || [];
   return guitarSongsCache;
+}
+
+/** Manual reordering only makes unambiguous sense on the plain, unfiltered
+ *  catalogue — reordering a filtered subset would leave the hidden songs'
+ *  positions undefined relative to it. Drag handles only show up when this
+ *  is true. */
+function guitarReorderEnabled() {
+  return gFilter === "all" && !gTagFilter && gSearchQuery.trim().length === 0;
+}
+
+/** Persists the catalogue's current on-screen order as each song's
+ *  sort_order (its index), then updates the in-memory cache to match so a
+ *  re-render doesn't momentarily snap back to the old order. */
+async function persistGuitarOrder(listEl, rowSelector) {
+  const ids = [...listEl.querySelectorAll(rowSelector)].map((row) => row.dataset.songId);
+  guitarSongsCache.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+  await Promise.all(ids.map((id, index) => supabaseClient.from("guitar_songs").update({ sort_order: index }).eq("id", id)));
 }
 
 function filterGuitarSongs(songs, filter) {
@@ -400,10 +421,13 @@ function guitarTagsHtml(song, escapeFn) {
 function renderGuitarSongRow(song) {
   return `
     <div class="card-row ${song.link ? "guitar-row-linked" : ""}" data-song-id="${song.id}" ${song.link ? 'title="Double-click to open link"' : ""}>
-      <div>
-        <div class="title">${escapeHtml(song.title)}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</div>
-        <div class="meta">${song.artist ? escapeHtml(song.artist) : "Unknown artist"}${song.rating ? `<span class="rating-divider">|</span>${starRatingDisplayHtml(song.rating)}` : ""}${song.note ? " · " + escapeHtml(song.note) : ""}</div>
-        ${guitarTagsHtml(song, escapeHtml)}
+      <div style="display:flex;align-items:center;gap:10px;">
+        ${guitarReorderEnabled() ? `<span class="drag-handle" title="Drag to reorder">&#9776;</span>` : ""}
+        <div>
+          <div class="title">${escapeHtml(song.title)}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</div>
+          <div class="meta">${song.artist ? escapeHtml(song.artist) : "Unknown artist"}${song.rating ? `<span class="rating-divider">|</span>${starRatingDisplayHtml(song.rating)}` : ""}${song.note ? " · " + escapeHtml(song.note) : ""}</div>
+          ${guitarTagsHtml(song, escapeHtml)}
+        </div>
       </div>
       <div class="row-actions">
         <button class="icon-btn guitar-toggle-liked ${song.is_liked ? "guitar-liked-active" : ""}" data-song-id="${song.id}" title="Liked">&#9825;</button>
@@ -440,6 +464,15 @@ function wireGuitarSongRows() {
       if (song && song.link) window.location.href = song.link;
     });
   });
+
+  if (guitarReorderEnabled()) {
+    const listEl = document.getElementById("guitar-songs-list");
+    listEl.querySelectorAll(".card-row[data-song-id]").forEach((row) => {
+      wireDragHandle(listEl, row, {
+        onDrop: () => persistGuitarOrder(listEl, ".card-row[data-song-id]"),
+      });
+    });
+  }
 }
 
 function wireGuitarActions() {
@@ -627,6 +660,7 @@ function renderGuitarSongRowMobile(song) {
     <div class="m-guitar-swipe-wrap m-swipe-owns-gesture" data-song-id="${song.id}">
       <button type="button" class="m-swipe-action-btn m-swipe-action-delete">Delete</button>
       <div class="m-guitar-card">
+        ${guitarReorderEnabled() ? `<span class="drag-handle" title="Drag to reorder">&#9776;</span>` : ""}
         <div class="info">
           <div class="name">${escapeHtmlMobile(song.title)}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</div>
           <div class="detail">${song.artist ? escapeHtmlMobile(song.artist) : "Unknown artist"}${song.rating ? `<span class="rating-divider">|</span>${starRatingDisplayHtml(song.rating)}` : ""}${song.note ? " · " + escapeHtmlMobile(song.note) : ""}</div>
@@ -706,6 +740,15 @@ function wireGuitarMobileListRows() {
     const song = guitarSongsCache.find((s) => s.id === wrap.dataset.songId);
     if (song) attachGuitarSongSwipe(wrap, song);
   });
+
+  if (guitarReorderEnabled()) {
+    const listEl = document.getElementById("m-guitar-list");
+    listEl.querySelectorAll(".m-guitar-swipe-wrap").forEach((wrap) => {
+      wireDragHandle(listEl, wrap, {
+        onDrop: () => persistGuitarOrder(listEl, ".m-guitar-swipe-wrap"),
+      });
+    });
+  }
 }
 
 let mGuitarLastTapAt = 0;

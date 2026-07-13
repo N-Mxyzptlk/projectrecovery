@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>NUL Systems</title>
+  <title>NLAB Environment</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet" />
@@ -17,7 +17,7 @@
        ============================================ -->
   <div id="login-screen" class="hidden">
     <div class="login-box">
-      <h1>NUL SYSTEMS</h1>
+      <h1>NLAB Environment</h1>
       <p class="subtitle">Sign in to continue</p>
       <form id="login-form">
         <div class="field">
@@ -56,22 +56,9 @@
 
   <div id="m-app-drawer-overlay" class="m-app-drawer-overlay hidden">
     <nav class="m-app-drawer" id="m-app-drawer">
-      <div class="m-drawer-brand">NUL SYSTEMS</div>
-      <div class="m-drawer-app-item" data-app="home">
-        <div class="m-drawer-app-name">Home</div>
-      </div>
-      <div class="m-drawer-app-item" data-app="workout">
-        <div class="m-drawer-app-name">Workout</div>
-      </div>
-      <div class="m-drawer-app-item" data-app="finance">
-        <div class="m-drawer-app-name">Finance</div>
-      </div>
-      <div class="m-drawer-app-item" data-app="guitar">
-        <div class="m-drawer-app-name">Guitar</div>
-      </div>
-      <div class="m-drawer-app-item" data-app="movies">
-        <div class="m-drawer-app-name">Movies</div>
-      </div>
+      <div class="m-drawer-brand">NLAB Environment</div>
+      <div id="m-drawer-nav-items"><!-- filled by JS from resolvedNavApps() --></div>
+      <button type="button" class="m-drawer-refresh-btn" id="m-drawer-refresh-btn" title="Refresh app list (e.g. after changing it on another device)">&#8635; Refresh</button>
     </nav>
   </div>
 
@@ -94,16 +81,12 @@
   <div id="app-root" class="hidden">
     <nav class="sidebar">
       <div class="sidebar-brand" id="sidebar-brand-home-link" role="button" tabindex="0" style="cursor:pointer;">
-        <div class="name">NUL SYSTEMS</div>
+        <div class="name">NLAB Environment</div>
         <div class="tag">Control Center</div>
       </div>
 
       <div class="sidebar-section-label">Apps</div>
-      <div class="nav-item app-nav-item active" data-app="home">Home</div>
-      <div class="nav-item app-nav-item" data-app="workout">Workout</div>
-      <div class="nav-item app-nav-item" data-app="finance">Finance</div>
-      <div class="nav-item app-nav-item" data-app="guitar">Guitar</div>
-      <div class="nav-item app-nav-item" data-app="movies">Movies</div>
+      <div id="sidebar-nav-items"><!-- filled by JS from resolvedNavApps() --></div>
 
       <div class="sidebar-footer">
         <div class="status-row" id="status-row">
@@ -140,7 +123,7 @@
             </div>
             <div class="home-hero-right">
               <div class="home-status-line"><span class="status-dot" id="home-status-dot"></span><span id="home-status-text">Checking...</span></div>
-              <div class="home-callsign">NUL SYSTEMS // CONTROL CENTER</div>
+              <div class="home-callsign">NLAB ENVIRONMENT // CONTROL CENTER</div>
             </div>
           </div>
 
@@ -476,6 +459,13 @@
             <button class="btn-accent" id="admin-change-password-btn" style="margin-left:12px;flex-shrink:0;">Update</button>
           </div>
           <div class="error-text" id="admin-password-msg"></div>
+        </div>
+
+        <div class="card">
+          <h4 class="admin-section-title">App modules</h4>
+          <div class="card-row" style="border-bottom:none;flex-direction:column;align-items:stretch;">
+            <div class="nav-module-list" id="admin-nav-module-list"><!-- filled by JS --></div>
+          </div>
         </div>
 
         <div class="card">

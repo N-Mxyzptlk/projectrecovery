@@ -35,7 +35,13 @@
   display: flex;
   flex-direction: column;
   background: var(--bg);
-  touch-action: manipulation; /* kills double-tap-to-zoom on rapid stepper taps */
+  /* pan-y (not `manipulation`, which implicitly still allows pan-x) — every
+     horizontal gesture in this app (swipe-to-delete, the drawer drag) is
+     already fully JS-driven, so the browser's own horizontal pan/scroll
+     recognizer only ever competed with it, making drags feel laggy/janky
+     instead of tracking the finger 1:1. Vertical scroll is untouched, and
+     double-tap-zoom stays killed since it's simply not in this list. */
+  touch-action: pan-y pinch-zoom;
 }
 
 .m-topbar {
@@ -1457,7 +1463,8 @@
   background: rgba(0, 0, 0, 0.6);
   z-index: 400;
   opacity: 0;
-  transition: opacity 0.14s ease;
+  transition: opacity 0.22s ease;
+  touch-action: pan-y pinch-zoom; /* same reasoning as #mobile-app — the close-drag is fully JS-driven */
 }
 
 .m-app-drawer-overlay.open {
@@ -1468,11 +1475,34 @@
   width: 78%;
   max-width: 300px;
   height: 100%;
+  display: flex;
+  flex-direction: column;
   background: var(--surface-raised);
   border-right: 1px solid var(--border);
-  padding: calc(env(safe-area-inset-top, 0px) + 24px) 0 20px;
+  padding: calc(env(safe-area-inset-top, 0px) + 24px) 0 calc(env(safe-area-inset-bottom, 0px) + 16px);
   transform: translateX(-100%);
-  transition: transform 0.14s ease;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.m-drawer-refresh-btn {
+  margin: auto 20px 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.m-drawer-refresh-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.m-drawer-refresh-btn.refreshing {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .m-app-drawer-overlay.open .m-app-drawer {

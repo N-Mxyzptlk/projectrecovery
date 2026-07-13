@@ -19,6 +19,41 @@ let mStationHistory = null; // { lastSets: [...], lastDate, prWeight }
 let mIsPRAttemptMode = false;
 let mPendingPRSetId = null; // set awaiting a Success/Failure tag
 
+/* ============================================
+   Screen Wake Lock — keeps the phone from dimming/locking while the active
+   workout logging screen is up (same idea as a video player keeping the
+   screen on mid-playback), and nowhere else in the app. The browser
+   auto-releases the lock whenever the tab is hidden (app backgrounded,
+   phone locked) and does NOT auto-reacquire it — the visibilitychange
+   listener at the bottom of this section is what re-requests it if the
+   user comes back mid-session.
+   ============================================ */
+let mWakeLock = null;
+
+async function acquireWakeLock() {
+  if (!("wakeLock" in navigator) || mWakeLock) return;
+  try {
+    mWakeLock = await navigator.wakeLock.request("screen");
+    mWakeLock.addEventListener("release", () => {
+      mWakeLock = null;
+    });
+  } catch (e) {
+    // Not supported, or denied (e.g. low battery) — logging still works
+    // fine without it, so this is silently non-fatal.
+  }
+}
+
+function releaseWakeLock() {
+  if (mWakeLock) mWakeLock.release();
+  mWakeLock = null;
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && mApp === "workout" && mScreen === "log" && mCurrentWorkout) {
+    acquireWakeLock();
+  }
+});
+
 let mFinishConfirmPending = false;
 let mFinishConfirmTimeout = null;
 
@@ -40,12 +75,13 @@ function touchLastUpdatedMobile() {
 /* ============================================
    Boot
    ============================================ */
-function initMobileApp(session) {
+async function initMobileApp(session) {
   currentUserId = session.user.id;
   document.getElementById("mobile-app").classList.remove("hidden");
   document.getElementById("m-fab-stack").classList.remove("hidden");
   document.getElementById("m-drawer-handle").classList.remove("hidden");
 
+  await loadNavAppsPref(); // defined in dbclient.js — shared with the desktop sidebar and Settings' editor
   renderFabStack();
   wireAppDrawer();
   document.getElementById("m-fab-hidden-nub").addEventListener("click", showFabStackFromNub);
@@ -233,15 +269,45 @@ function renderFabStack() {
    App-switcher drawer — tap the edge handle, or drag right from most of
    the screen width, to open it; drag left (or tap the backdrop) to close.
    ============================================ */
+/** Renders the drawer's app list from resolvedNavApps() (dbclient.js) —
+ *  called at boot and again after the Settings editor saves a change, same
+ *  as desktop's renderSidebarNavItems. */
+function renderDrawerNavItems() {
+  const box = document.getElementById("m-drawer-nav-items");
+  box.innerHTML = resolvedNavApps()
+    .map(
+      (m) => `
+    <div class="m-drawer-app-item ${m.app === mApp ? "active" : ""}" data-app="${m.app}">
+      <div class="m-drawer-app-name">${escapeHtmlMobile(m.label)}</div>
+    </div>`
+    )
+    .join("");
+  box.querySelectorAll(".m-drawer-app-item").forEach((item) => {
+    item.addEventListener("click", () => switchMobileApp(item.dataset.app));
+  });
+}
+
 function wireAppDrawer() {
   document.getElementById("m-drawer-handle").addEventListener("click", openAppDrawer);
   document.getElementById("m-app-drawer-overlay").addEventListener("click", (e) => {
     if (e.target.id === "m-app-drawer-overlay") closeAppDrawer();
   });
-  document.querySelectorAll(".m-drawer-app-item").forEach((item) => {
-    item.addEventListener("click", () => switchMobileApp(item.dataset.app));
-  });
+  renderDrawerNavItems();
   attachEdgeSwipeDrawer();
+
+  document.getElementById("m-drawer-refresh-btn").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    btn.classList.add("refreshing");
+    btn.textContent = "Refreshing...";
+
+    await loadNavAppsPref(); // defined in dbclient.js — re-pulls profiles.nav_apps (e.g. after changing it on another device)
+    renderDrawerNavItems();
+    if (mApp === "home") renderHomeScreenMobile(); // Shortcuts widget reflects it too, if currently visible
+
+    btn.textContent = "↻ Refresh";
+    setTimeout(() => btn.classList.remove("refreshing"), 400);
+  });
 }
 
 function openAppDrawer() {
@@ -254,13 +320,14 @@ function openAppDrawer() {
 function closeAppDrawer() {
   const overlay = document.getElementById("m-app-drawer-overlay");
   overlay.classList.remove("open");
-  setTimeout(() => overlay.classList.add("hidden"), 140); // matches CSS transition duration
+  setTimeout(() => overlay.classList.add("hidden"), 220); // matches CSS transition duration
 }
 
 function switchMobileApp(appName) {
   if (appName === mApp) return closeAppDrawer();
   mApp = appName;
   if (appName !== "home") stopHomeClock();
+  if (appName !== "workout") releaseWakeLock();
   closeAppDrawer();
   renderFabStack();
 
@@ -313,13 +380,23 @@ function attachEdgeSwipeDrawer() {
   let activeRoot = null;
   let pointerId = null;
   let drawerWidth = 0;
+  let rafId = null;
+  let pendingProgress = null;
 
+  // Coalesces to one style write per animation frame instead of one per
+  // pointermove (touch input can fire faster than the display refreshes) —
+  // this is what actually made the drag track the finger smoothly instead
+  // of feeling laggy/janky, on top of the touch-action fix above.
   function setLiveProgress(progress) {
-    const clamped = Math.max(0, Math.min(1, progress));
-    drawer.style.transition = "none";
-    overlay.style.transition = "none";
-    drawer.style.transform = `translateX(${(clamped - 1) * 100}%)`;
-    overlay.style.opacity = String(clamped);
+    pendingProgress = Math.max(0, Math.min(1, progress));
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      drawer.style.transition = "none";
+      overlay.style.transition = "none";
+      drawer.style.transform = `translateX(${(pendingProgress - 1) * 100}%)`;
+      overlay.style.opacity = String(pendingProgress);
+    });
   }
 
   /** Hands off from the live drag to a real transition, animating from
@@ -328,6 +405,10 @@ function attachEdgeSwipeDrawer() {
    *  from display:none), which would show a one-frame flash back to fully
    *  closed here since the overlay is already visible mid-drag. */
   function settle(open) {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
     drawer.style.transition = "";
     overlay.style.transition = "";
     if (open) {
@@ -336,7 +417,7 @@ function attachEdgeSwipeDrawer() {
       document.querySelectorAll(".m-drawer-app-item").forEach((i) => i.classList.toggle("active", i.dataset.app === mApp));
     } else {
       overlay.classList.remove("open");
-      setTimeout(() => overlay.classList.add("hidden"), 150);
+      setTimeout(() => overlay.classList.add("hidden"), 220); // matches CSS transition duration
     }
     drawer.style.transform = "";
     overlay.style.opacity = "";
@@ -417,6 +498,7 @@ async function loadStationsForMobile() {
  *  had, generalized now that there's a third screen (Dashboard). */
 function setWorkoutMobileScreen(target) {
   mScreen = mScreen === target ? "log" : target;
+  if (mScreen !== "log") releaseWakeLock();
   renderFabStack();
 
   if (mScreen === "dashboard") {
@@ -592,6 +674,7 @@ async function computeSessionNumberFor(workoutId) {
    IDLE STATE — no active workout
    ============================================ */
 function renderStartPrompt() {
+  releaseWakeLock(); // no active session — nothing here needs the screen kept on
   document.getElementById("m-topbar").innerHTML = `
     <div>
       <div class="m-title">WORKOUT</div>
@@ -679,6 +762,7 @@ function updateSessionTimer() {
 }
 
 function renderActiveSession() {
+  acquireWakeLock(); // keep the screen on while actively logging, same idea as a video player mid-playback
   renderSessionTopbar();
 
   const main = document.getElementById("m-main");
@@ -957,9 +1041,12 @@ function openSetEditSheet(set, options) {
     btn.textContent = "Saving...";
 
     beginMutation();
+    // NOT `editWeight || null` — same bug as logSet(): 0 is a real,
+    // intentional bodyweight value, and `0 || null` was silently
+    // corrupting it back to null on every edit too.
     const { error } = await supabaseClient
       .from("workout_sets")
-      .update({ reps: editReps, weight: editWeight || null })
+      .update({ reps: editReps, weight: editWeight })
       .eq("id", set.id);
     endMutation();
 
@@ -971,7 +1058,7 @@ function openSetEditSheet(set, options) {
     }
 
     overlay.remove();
-    if (options && options.onSaved) options.onSaved({ reps: editReps, weight: editWeight || null });
+    if (options && options.onSaved) options.onSaved({ reps: editReps, weight: editWeight });
   });
 }
 
@@ -1054,9 +1141,9 @@ async function loadStationHistory(stationId) {
   const lastSet = lastSets[lastSets.length - 1];
   if (lastSet) {
     mRepsValue = lastSet.reps;
-    mWeightValue = lastSet.weight || mWeightValue;
+    mWeightValue = lastSet.weight != null ? lastSet.weight : mWeightValue;
     mBaselineReps = lastSet.reps;
-    mBaselineWeight = lastSet.weight || null;
+    mBaselineWeight = lastSet.weight != null ? lastSet.weight : null;
     const repsInput = document.getElementById("m-reps-value");
     const weightInput = document.getElementById("m-weight-value");
     if (repsInput) repsInput.value = mRepsValue;
@@ -1136,7 +1223,11 @@ async function logSet() {
       station_id: mSelectedStationId,
       set_number: nextSetNumber,
       reps: mRepsValue,
-      weight: mWeightValue || null,
+      // NOT `mWeightValue || null` — 0 is a real, intentional value (a
+      // bodyweight set like pushups), and `0 || null` was silently turning
+      // it into null, making those sets vanish from station progress
+      // entirely instead of being graphed by reps.
+      weight: mWeightValue,
       client_uuid: crypto.randomUUID(),
       is_pr_attempt: wasPRAttempt,
     })
@@ -1811,6 +1902,11 @@ function renderSettingsSheetBody(profile, email) {
       </div>
 
       <div class="m-stat-block">
+        <div class="label">App modules</div>
+        <div class="nav-module-list" id="m-nav-module-list" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="m-stat-block">
         <div class="label">Change password</div>
         <input type="password" id="m-settings-new-password" placeholder="At least 6 characters"
                style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:14px;margin-top:8px;" />
@@ -1829,6 +1925,13 @@ function renderSettingsSheetBody(profile, email) {
   enhanceSelect("m-auto-logout-select");
   refreshStatusLights(); // instant reflection of current known state
   runMobileConnectivityCheck(); // then verify freshness
+
+  // Shared editor (uimodal.js) — desktop's Settings page renders the same
+  // thing into its own container id, with its own refresh callback.
+  renderNavModuleEditor("m-nav-module-list", () => {
+    renderDrawerNavItems();
+    if (mApp === "home") renderHomeScreenMobile(); // Shortcuts widget reflects the change too
+  });
 
   document.getElementById("m-signout-btn").addEventListener("click", signOut);
   document.getElementById("m-export-btn").addEventListener("click", exportDataMobile);

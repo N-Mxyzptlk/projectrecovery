@@ -21,10 +21,11 @@ const VIEW_LOADERS = {
   payments: () => loadFinancePayments(),
 };
 
-function initDesktopApp(session) {
+async function initDesktopApp(session) {
   currentUserId = session.user.id;
   document.getElementById("app-root").classList.remove("hidden");
 
+  await loadNavAppsPref(); // defined in dbclient.js — shared with mobile's drawer and Settings' editor
   setupNav();
   document.getElementById("logout-btn").addEventListener("click", signOut);
   document.getElementById("refresh-btn").addEventListener("click", refreshCurrentView);
@@ -72,10 +73,29 @@ async function runConnectivityCheck() {
    Navigation — the sidebar switches between "apps" (Workout / Finance /
    the app-agnostic Admin); each app's own pages live in a top tab bar.
    ============================================ */
-function setupNav() {
-  document.querySelectorAll(".app-nav-item").forEach((item) => {
+
+/** Renders the sidebar's app list from resolvedNavApps() (dbclient.js) —
+ *  called at boot and again immediately after the Settings editor saves a
+ *  change, so show/hide/reorder takes effect without a reload. */
+function renderSidebarNavItems() {
+  const box = document.getElementById("sidebar-nav-items");
+  box.innerHTML = resolvedNavApps()
+    .map((m) => `<div class="nav-item app-nav-item ${m.app === currentApp ? "active" : ""}" data-app="${m.app}">${escapeHtml(m.label)}</div>`)
+    .join("");
+  box.querySelectorAll(".app-nav-item").forEach((item) => {
     item.addEventListener("click", () => switchApp(item.dataset.app));
   });
+}
+
+function setupNav() {
+  renderSidebarNavItems();
+
+  // #settings-btn also carries .app-nav-item (for the active-class styling
+  // switchApp() applies), but it lives in .sidebar-footer, outside
+  // #sidebar-nav-items — renderSidebarNavItems() only wires clicks for the
+  // dynamic list, so this one needs its own explicit listener, same as
+  // the brand link below.
+  document.getElementById("settings-btn").addEventListener("click", () => switchApp("admin"));
 
   const brandLink = document.getElementById("sidebar-brand-home-link");
   brandLink.addEventListener("click", () => switchApp("home"));
@@ -668,14 +688,18 @@ async function loadStationStats() {
     return;
   }
 
-  // stationId -> { name, sessions: [{date, weight, reps}] } — the heaviest
-  // set of the session represents that session's data point.
+  // stationId -> { name, sessions: [{date, weight, reps}] } — the best set
+  // of the session represents that session's data point: heaviest weight
+  // normally, but most reps for a bodyweight station (weight 0 throughout —
+  // e.g. pushups), since "heaviest" is meaningless when every set is 0kg.
   const byStation = {};
   (workouts || []).forEach((w) => {
     const perStationMax = {};
     w.workout_sets.forEach((s) => {
-      if (s.weight == null) return; // bodyweight sets don't factor into a weight trend
-      if (!perStationMax[s.station_id] || s.weight > perStationMax[s.station_id].weight) {
+      if (s.weight == null) return; // truly unset (no weight ever logged) — excluded, unlike an intentional 0
+      const existing = perStationMax[s.station_id];
+      const isBetter = !existing || (s.weight > 0 ? s.weight > existing.weight : s.reps > existing.reps);
+      if (isBetter) {
         perStationMax[s.station_id] = { weight: s.weight, reps: s.reps, name: s.stations.name };
       }
     });
@@ -737,17 +761,23 @@ function renderStationStatCard({ stationId, data, daysSince, isAbandoned }) {
   const sessions = data.sessions;
   const timesLogged = sessions.length;
 
+  // Bodyweight station (pushups, etc.) — every set logged at 0kg, so
+  // "heaviest weight" is meaningless; track reps instead throughout.
+  const isBodyweight = sessions.every((s) => s.weight === 0);
+  const metricOf = (s) => (isBodyweight ? s.reps : s.weight);
+  const unit = isBodyweight ? "" : "kg";
+
   let trendClass = "same";
   let trendLabel = "First session";
   if (sessions.length >= 2) {
-    const last = sessions[sessions.length - 1].weight;
-    const prev = sessions[sessions.length - 2].weight;
+    const last = metricOf(sessions[sessions.length - 1]);
+    const prev = metricOf(sessions[sessions.length - 2]);
     if (last > prev) {
       trendClass = "up";
-      trendLabel = `↑ +${Math.round((last - prev) * 10) / 10}kg`;
+      trendLabel = `↑ +${Math.round((last - prev) * 10) / 10}${unit}`;
     } else if (last < prev) {
       trendClass = "down";
-      trendLabel = `↓ ${Math.round((last - prev) * 10) / 10}kg`;
+      trendLabel = `↓ ${Math.round((last - prev) * 10) / 10}${unit}`;
     } else {
       trendClass = "same";
       trendLabel = "→ Same";
@@ -762,17 +792,18 @@ function renderStationStatCard({ stationId, data, daysSince, isAbandoned }) {
     trendLabel = timesLogged === 1 ? "Not repeated" : "Inactive";
   }
 
-  const bestWeight = Math.max(...sessions.map((s) => s.weight));
-  const best1RM = Math.max(...sessions.map((s) => estimate1RM(s.weight, s.reps)));
+  const bestMetric = Math.max(...sessions.map(metricOf));
+  const best1RM = isBodyweight ? null : Math.max(...sessions.map((s) => estimate1RM(s.weight, s.reps)));
 
   const first = sessions[0];
   const last = sessions[sessions.length - 1];
-  const changeSinceFirst = last.weight - first.weight;
-  const pctSinceFirst = first.weight ? (changeSinceFirst / first.weight) * 100 : 0;
+  const changeSinceFirst = metricOf(last) - metricOf(first);
+  const pctSinceFirst = metricOf(first) ? (changeSinceFirst / metricOf(first)) * 100 : 0;
   const changeClass = changeSinceFirst > 0 ? "up" : changeSinceFirst < 0 ? "down" : "";
 
   const spanDays = Math.max(1, (new Date(last.date) - new Date(first.date)) / 86400000);
   const perMonth = timesLogged / Math.max(1, spanDays / 30);
+  const avgReps = Math.round(sessions.reduce((sum, s) => sum + s.reps, 0) / sessions.length);
 
   return `
     <div class="station-stat-card ${isAbandoned ? "abandoned" : `trend-${trendClass}`}">
@@ -780,19 +811,20 @@ function renderStationStatCard({ stationId, data, daysSince, isAbandoned }) {
         <div class="station-name">${escapeHtml(data.name)}</div>
         <div class="trend-badge ${trendClass}">${trendLabel}</div>
       </div>
-      <div class="meta-line">Logged ${timesLogged} time${timesLogged === 1 ? "" : "s"} · Last ${formatRelativeDays(daysSince)}</div>
+      <div class="meta-line">Logged ${timesLogged} time${timesLogged === 1 ? "" : "s"} · Last ${formatRelativeDays(daysSince)}${isBodyweight ? " · Bodyweight" : ""}</div>
 
       <div class="stat-mini-grid">
         <div class="stat-mini">
-          <div class="stat-mini-value">${Math.round(bestWeight * 10) / 10}kg</div>
-          <div class="stat-mini-label">Best set</div>
+          <div class="stat-mini-value">${Math.round(bestMetric * 10) / 10}${unit}</div>
+          <div class="stat-mini-label">${isBodyweight ? "Best set (reps)" : "Best set"}</div>
         </div>
         <div class="stat-mini">
-          <div class="stat-mini-value">${Math.round(best1RM * 10) / 10}kg</div>
-          <div class="stat-mini-label">Est. 1RM</div>
+          ${isBodyweight
+            ? `<div class="stat-mini-value">${avgReps}</div><div class="stat-mini-label">Avg reps</div>`
+            : `<div class="stat-mini-value">${Math.round(best1RM * 10) / 10}kg</div><div class="stat-mini-label">Est. 1RM</div>`}
         </div>
         <div class="stat-mini">
-          <div class="stat-mini-value ${changeClass}">${changeSinceFirst > 0 ? "+" : ""}${Math.round(changeSinceFirst * 10) / 10}kg</div>
+          <div class="stat-mini-value ${changeClass}">${changeSinceFirst > 0 ? "+" : ""}${Math.round(changeSinceFirst * 10) / 10}${unit}</div>
           <div class="stat-mini-label">Since first (${Math.round(pctSinceFirst)}%)</div>
         </div>
         <div class="stat-mini">
@@ -843,14 +875,26 @@ function renderOneStationChart({ stationId, data }) {
 
   const dense = data.sessions.length > DENSE_SESSION_THRESHOLD;
   const reps = data.sessions.map((s) => s.reps);
+  const isBodyweight = data.sessions.every((s) => s.weight === 0);
 
   if (stationStatCharts[stationId]) stationStatCharts[stationId].destroy();
 
-  const chart = new Chart(ctx.getContext("2d"), {
-    type: "line",
-    data: {
-      labels: data.sessions.map((s) => new Date(s.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
-      datasets: [
+  // Bodyweight station — weight/1RM datasets would just be flat lines at
+  // 0, so plot reps as the single trend line instead.
+  const datasets = isBodyweight
+    ? [
+        {
+          label: "Reps",
+          data: reps,
+          borderColor: "#6c63ff",
+          backgroundColor: "rgba(108,99,255,0.15)",
+          fill: true,
+          tension: 0.3,
+          pointRadius: dense && !isZoomed ? 0 : 4,
+          pointHoverRadius: 6,
+        },
+      ]
+    : [
         {
           label: "Weight (kg)",
           data: data.sessions.map((s) => s.weight),
@@ -875,9 +919,15 @@ function renderOneStationChart({ stationId, data }) {
           pointRadius: 0,
           pointHoverRadius: 4,
         },
-      ],
+      ];
+
+  const chart = new Chart(ctx.getContext("2d"), {
+    type: "line",
+    data: {
+      labels: data.sessions.map((s) => new Date(s.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
+      datasets,
     },
-    options: chartBaseOptions((i) => `${reps[i] || "?"} reps`),
+    options: chartBaseOptions(isBodyweight ? null : (i) => `${reps[i] || "?"} reps`),
   });
   stationStatCharts[stationId] = chart;
 

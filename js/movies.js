@@ -61,51 +61,9 @@ function renderPlatformAddPickerHtml(selected) {
     .join("");
 }
 
-/** Generic vertical drag-to-reorder for one row within containerEl — same
- *  live-drag-then-settle Pointer Events pattern used elsewhere in the app
- *  (attachGuitarSongSwipe, attachEdgeSwipeDrawer), just vertical instead of
- *  horizontal. Wires a single row; called once per row (including ones
- *  added later), not re-run over the whole list, so listeners never stack. */
-function wireDragHandle(containerEl, row) {
-  const handle = row.querySelector(".platform-order-handle");
-  if (!handle) return;
-
-  let dragging = false;
-  let startY = 0;
-  let rowHeight = 0;
-
-  handle.addEventListener("pointerdown", (e) => {
-    dragging = true;
-    startY = e.clientY;
-    rowHeight = row.getBoundingClientRect().height || 1;
-    row.classList.add("dragging");
-    handle.setPointerCapture(e.pointerId);
-  });
-
-  handle.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    const dy = e.clientY - startY;
-    const offset = Math.round(dy / rowHeight);
-    if (offset === 0) return;
-
-    const rows = [...containerEl.children];
-    const idx = rows.indexOf(row);
-    const targetIdx = Math.max(0, Math.min(rows.length - 1, idx + offset));
-    if (targetIdx === idx) return;
-
-    const targetRow = rows[targetIdx];
-    if (offset > 0) containerEl.insertBefore(row, targetRow.nextSibling);
-    else containerEl.insertBefore(row, targetRow);
-    startY = e.clientY;
-  });
-
-  const endDrag = () => {
-    dragging = false;
-    row.classList.remove("dragging");
-  };
-  handle.addEventListener("pointerup", endDrag);
-  handle.addEventListener("pointercancel", endDrag);
-}
+// wireDragHandle (generic vertical drag-to-reorder) now lives in uimodal.js
+// so Guitar's and Movies' own catalogue lists can reuse it too, not just
+// this file's platform-order rows.
 
 /** Wires the whole platform editor (order list + add picker + custom
  *  input) for one Add/Edit form. `idPrefix` picks the desktop vs mobile
@@ -151,12 +109,12 @@ function wireMoviePlatformEditor(idPrefix) {
       <button type="button" class="platform-order-remove" aria-label="Remove platform">&times;</button>
     `;
     orderListEl.appendChild(row);
-    wireDragHandle(orderListEl, row);
+    wireDragHandle(orderListEl, row, { handleSelector: ".platform-order-handle" });
     wireRemoveButtons();
     refreshAddPicker();
   }
 
-  orderListEl.querySelectorAll(".platform-order-row").forEach((row) => wireDragHandle(orderListEl, row));
+  orderListEl.querySelectorAll(".platform-order-row").forEach((row) => wireDragHandle(orderListEl, row, { handleSelector: ".platform-order-handle" }));
   wireRemoveButtons();
   wireAddChips();
 
@@ -178,7 +136,11 @@ let moviesCache = [];
 let movieFilter = "all"; // 'all' | 'movie' | 'tv' — shared filter state, desktop and mobile read/write the same one
 
 async function loadMoviesCache() {
-  const { data, error } = await supabaseClient.from("movies_watchlist").select("*").order("created_at", { ascending: false });
+  const { data, error } = await supabaseClient
+    .from("movies_watchlist")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false });
   if (!error) moviesCache = data || [];
   return moviesCache;
 }
@@ -186,6 +148,18 @@ async function loadMoviesCache() {
 function filterMovies(items, filter) {
   if (filter === "movie" || filter === "tv") return items.filter((m) => m.media_type === filter);
   return items;
+}
+
+/** Reordering only makes unambiguous sense on the unfiltered "All" tab —
+ *  same reasoning as guitarReorderEnabled() in guitar.js. */
+function moviesReorderEnabled() {
+  return movieFilter === "all";
+}
+
+async function persistMoviesOrder(listEl, rowSelector) {
+  const ids = [...listEl.querySelectorAll(rowSelector)].map((row) => row.dataset.movieId);
+  moviesCache.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+  await Promise.all(ids.map((id, index) => supabaseClient.from("movies_watchlist").update({ sort_order: index }).eq("id", id)));
 }
 
 async function deleteMovie(id) {
@@ -256,18 +230,29 @@ function renderMoviesList() {
   }
 
   listEl.innerHTML = items.map((m) => renderMovieRow(m)).join("");
+
+  if (moviesReorderEnabled()) {
+    listEl.querySelectorAll(".card-row[data-movie-id]").forEach((row) => {
+      wireDragHandle(listEl, row, {
+        onDrop: () => persistMoviesOrder(listEl, ".card-row[data-movie-id]"),
+      });
+    });
+  }
 }
 
 function renderMovieRow(movie) {
   return `
     <div class="card-row" data-movie-id="${movie.id}">
-      <div>
-        <div class="title movie-title-row">
-          <span>${escapeHtml(movie.title)}</span>
-          ${movieTypeBadgeHtml(movie.media_type)}
-          ${(movie.platforms || []).map((p) => moviePlatformBadgeHtml(p)).join("")}
+      <div style="display:flex;align-items:center;gap:10px;">
+        ${moviesReorderEnabled() ? `<span class="drag-handle" title="Drag to reorder">&#9776;</span>` : ""}
+        <div>
+          <div class="title movie-title-row">
+            <span>${escapeHtml(movie.title)}</span>
+            ${movieTypeBadgeHtml(movie.media_type)}
+            ${(movie.platforms || []).map((p) => moviePlatformBadgeHtml(p)).join("")}
+          </div>
+          ${movie.rating ? `<div class="meta">${starRatingDisplayHtml(movie.rating)}</div>` : ""}
         </div>
-        ${movie.rating ? `<div class="meta">${starRatingDisplayHtml(movie.rating)}</div>` : ""}
       </div>
       <div class="row-actions">
         <button class="icon-btn" onclick="openMovieModal('${movie.id}')">Edit</button>
@@ -395,6 +380,7 @@ function renderMovieRowMobile(movie) {
     <div class="m-guitar-swipe-wrap m-swipe-owns-gesture" data-movie-id="${movie.id}">
       <button type="button" class="m-swipe-action-btn m-swipe-action-delete">Delete</button>
       <div class="m-guitar-card">
+        ${moviesReorderEnabled() ? `<span class="drag-handle" title="Drag to reorder">&#9776;</span>` : ""}
         <div class="info">
           <div class="name movie-title-row">
             <span>${escapeHtmlMobile(movie.title)}</span>
@@ -432,6 +418,15 @@ function wireMoviesMobileScreen() {
     const movie = moviesCache.find((m) => m.id === wrap.dataset.movieId);
     if (movie) attachMovieSwipe(wrap, movie);
   });
+
+  if (moviesReorderEnabled()) {
+    const listEl = document.getElementById("m-movies-list");
+    listEl.querySelectorAll(".m-guitar-swipe-wrap").forEach((wrap) => {
+      wireDragHandle(listEl, wrap, {
+        onDrop: () => persistMoviesOrder(listEl, ".m-guitar-swipe-wrap"),
+      });
+    });
+  }
 }
 
 /** Swipe right reveals Delete — same single-direction gesture as

@@ -2,14 +2,16 @@
 // Initializes the Supabase client and exposes small auth helpers.
 // Loaded after config.js and the Supabase CDN script, before app-specific JS.
 
-// Session persists to sessionStorage — survives an in-tab reload (F5) but
-// is wiped the moment the tab/browser closes, and never touches disk.
-// Middle ground: closing the tab still fully signs out (protects a
-// shared-device scenario), but a reload no longer forces a re-login.
+// Session persists to localStorage — survives closing the browser/app
+// entirely, not just an in-tab reload. Previously used sessionStorage
+// specifically to force a fresh login on every new tab/browser session
+// (a shared-device safeguard), but re-logging in constantly on a personal
+// phone was more annoying than that safeguard was worth; the phone's own
+// lock screen (Face ID/PIN) is the security boundary now instead.
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
-    storage: window.sessionStorage,
+    storage: window.localStorage,
   },
 });
 
@@ -144,6 +146,53 @@ function updateAutoLogoutMinutes(minutes) {
 }
 
 /**
+ * Modular apps — which of the sidebar/drawer nav items show up, and in
+ * what order. Shared by the desktop sidebar, the mobile drawer, and the
+ * Settings page that edits this list, so it lives here (loaded before all
+ * three). Settings/Admin itself isn't part of this list — it's the one
+ * place this preference gets edited, so it can't be hidden.
+ */
+const APP_MODULES = [
+  { app: "home", label: "Home" },
+  { app: "workout", label: "Workout" },
+  { app: "finance", label: "Finance" },
+  { app: "guitar", label: "Guitar" },
+  { app: "movies", label: "Movies" },
+];
+
+let navAppsPref = null; // profiles.nav_apps as loaded — null means "use the default list/order"
+
+async function loadNavAppsPref() {
+  try {
+    const { data } = await supabaseClient.from("profiles").select("nav_apps").maybeSingle();
+    navAppsPref = Array.isArray(data?.nav_apps) ? data.nav_apps : null;
+  } catch (e) {
+    navAppsPref = null;
+  }
+}
+
+/** The effective, ordered, visible-only module list — the saved
+ *  preference if there is one, else every module in its built-in order.
+ *  Filters out anything in a saved preference that doesn't correspond to
+ *  a real module (e.g. left over from a renamed/removed app). */
+function resolvedNavApps() {
+  if (!navAppsPref || navAppsPref.length === 0) {
+    return APP_MODULES.map((m) => ({ ...m }));
+  }
+  return navAppsPref
+    .filter((p) => p.visible)
+    .map((p) => APP_MODULES.find((m) => m.app === p.app))
+    .filter(Boolean);
+}
+
+/** Persists a new preference (array of {app, visible} in display order)
+ *  and updates the in-memory copy so the next render reflects it. */
+async function saveNavAppsPref(pref) {
+  navAppsPref = pref;
+  await supabaseClient.from("profiles").upsert({ id: currentUserId, nav_apps: pref }, { onConflict: "id" });
+}
+
+/**
  * Status light model (shared by desktop sidebar + mobile settings):
  *   green  = DB reachable, nothing in flight — ready to record
  *   yellow = a logging write is currently in flight (transient)
@@ -253,6 +302,13 @@ function showLoginScreen(onAuthenticated) {
     const result = await signIn(username, password);
 
     if (result.success) {
+      // The password field's real value was otherwise left sitting in the
+      // DOM for the rest of the session (login-screen is only ever hidden
+      // via CSS, never removed) — which is what was making Chrome's
+      // password-manager prompt a "Save password?" popup later, triggered
+      // by an unrelated action elsewhere in the app (e.g. Guitar's Load
+      // Setlist opening new tabs, which shifts window focus).
+      form.reset();
       loginScreen.classList.add("hidden");
       onAuthenticated(result.session);
     } else {
