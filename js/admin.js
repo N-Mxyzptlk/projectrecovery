@@ -18,7 +18,13 @@ async function loadAdmin() {
 
   // Shared editor (uimodal.js) — mobile's Settings sheet renders the same
   // thing into its own container id, with its own refresh callback.
-  renderNavModuleEditor("admin-nav-module-list", () => renderSidebarNavItems());
+  try {
+    renderNavModuleEditor("admin-nav-module-list", () => renderSidebarNavItems());
+  } catch (e) {
+    console.error("App modules editor failed to render:", e);
+    const box = document.getElementById("admin-nav-module-list");
+    if (box) box.innerHTML = `<div class="empty-state" style="padding:12px 0;">Couldn't load app modules — check the console for details.</div>`;
+  }
 }
 
 function wireAdminActions() {

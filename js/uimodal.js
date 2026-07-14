@@ -424,3 +424,87 @@ function renderNavModuleEditor(containerId, onSaved) {
   });
   document.addEventListener("touchcancel", cancelPressedState);
 })();
+
+/** Turns on the back-and-forth marquee scroll (see .m-guitar-title-line in
+ *  mobile.css) for any matching line whose text is actually too wide for
+ *  its box — a row's real width isn't known until it's laid out, so this
+ *  runs after the rows are already in the DOM, not at template-string
+ *  time. Safe to call repeatedly (e.g. after every re-render). */
+function activateMarqueeOverflow(containerEl, lineSelector) {
+  containerEl.querySelectorAll(lineSelector).forEach((line) => {
+    const inner = line.querySelector(".marquee-text");
+    if (!inner) return;
+    const overflow = inner.scrollWidth - line.clientWidth;
+    if (overflow > 2) {
+      line.classList.add("marquee-active");
+      line.style.setProperty("--marquee-distance", `${-(overflow + 12)}px`);
+    } else {
+      line.classList.remove("marquee-active");
+      line.style.removeProperty("--marquee-distance");
+    }
+  });
+}
+
+/* ============================================
+   Bottom sheets — swipe down on the handle to dismiss, in addition to
+   tapping the backdrop. Delegated globally on document (not wired per
+   sheet) since .m-sheet-overlay is created dynamically all over the app
+   (Add Song, Add Movie, Settings, Journal edit, ...) — this way every one
+   of them gets it for free, including ones added later, with no per-sheet
+   wiring needed.
+   ============================================ */
+(function () {
+  const CLOSE_RATIO = 0.25; // drag down past 25% of the sheet's own height to dismiss
+  const DRAG_START_THRESHOLD = 6;
+
+  let sheetEl = null;
+  let overlayEl = null;
+  let startY = 0;
+  let dragging = false;
+  let committed = false;
+  let sheetHeight = 0;
+
+  document.addEventListener("pointerdown", (e) => {
+    const handle = e.target.closest(".m-sheet-handle");
+    if (!handle) return;
+    sheetEl = handle.closest(".m-sheet");
+    overlayEl = handle.closest(".m-sheet-overlay");
+    if (!sheetEl || !overlayEl) return;
+    dragging = true;
+    committed = false;
+    startY = e.clientY;
+    sheetHeight = sheetEl.getBoundingClientRect().height || 1;
+  });
+
+  document.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dy = e.clientY - startY;
+    if (!committed) {
+      if (dy < DRAG_START_THRESHOLD) return; // only a real downward drag commits — an upward wiggle stays a no-op
+      committed = true;
+      sheetEl.style.transition = "none";
+    }
+    sheetEl.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  });
+
+  const onRelease = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    if (!committed) return;
+
+    const dy = Math.max(0, e.clientY - startY);
+    const closingSheet = sheetEl;
+    const closingOverlay = overlayEl;
+    closingSheet.style.transition = "transform 0.2s ease";
+
+    if (dy > sheetHeight * CLOSE_RATIO) {
+      closingSheet.style.transform = "translateY(100%)";
+      setTimeout(() => closingOverlay.remove(), 200);
+    } else {
+      closingSheet.style.transform = "translateY(0)";
+    }
+  };
+
+  document.addEventListener("pointerup", onRelease);
+  document.addEventListener("pointercancel", onRelease);
+})();

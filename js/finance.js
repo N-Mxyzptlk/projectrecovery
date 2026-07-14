@@ -504,6 +504,7 @@ function attachCalendarSwipe(containerEl, navigateMonth) {
   let committed = false;
   let containerWidth = 0;
   let gridEl = null;
+  let pointerId = null;
 
   containerEl.addEventListener("pointerdown", (e) => {
     if (!e.target.closest(".fin-cal-grid")) return;
@@ -511,6 +512,7 @@ function attachCalendarSwipe(containerEl, navigateMonth) {
     committed = false;
     startX = e.clientX;
     startY = e.clientY;
+    pointerId = e.pointerId;
     containerWidth = containerEl.getBoundingClientRect().width || 1;
     gridEl = containerEl.querySelector(".fin-cal-grid");
   });
@@ -527,6 +529,9 @@ function attachCalendarSwipe(containerEl, navigateMonth) {
       if (Math.abs(dx) < DRAG_START_THRESHOLD) return;
       committed = true;
       gridEl.style.transition = "none";
+      try {
+        containerEl.setPointerCapture(pointerId);
+      } catch (err) {}
     }
     gridEl.style.transform = `translateX(${dx}px)`;
   });
@@ -1601,7 +1606,7 @@ function renderFinanceDashboardScreenMobile() {
 
     <div class="m-dash-card">
       <div class="m-dash-card-title">This month</div>
-      <div id="m-fin-calendar"></div>
+      <div id="m-fin-calendar" class="m-swipe-owns-gesture"></div>
     </div>
 
     <div class="m-set-list-label">Recent</div>

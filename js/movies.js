@@ -387,7 +387,7 @@ function renderMovieRowMobile(movie) {
             ${movieTypeBadgeHtml(movie.media_type)}
             ${(movie.platforms || []).map((p) => moviePlatformBadgeHtml(p)).join("")}
           </div>
-          ${movie.rating ? `<div class="detail">${starRatingDisplayHtml(movie.rating)}</div>` : ""}
+          <div class="m-guitar-rating-line">${movie.rating ? starRatingDisplayHtml(movie.rating) : ""}</div>
         </div>
         <div class="m-set-row-actions">
           <button class="m-guitar-icon-btn" data-action="edit" data-movie-id="${movie.id}" type="button">&#9998;</button>
@@ -432,6 +432,9 @@ function wireMoviesMobileScreen() {
 /** Swipe right reveals Delete — same single-direction gesture as
  *  attachGuitarSongSwipe (guitar.js), just without the double-tap-to-open
  *  behavior since a watchlist title has no link to open. */
+/** Swipe LEFT reveals Delete (on the right) — same convention change as
+ *  guitar.js's attachGuitarSongSwipe, and for the same reason: keeps
+ *  Delete clear of the drag-to-reorder handle on the left. */
 function attachMovieSwipe(wrap, movie) {
   const card = wrap.querySelector(".m-guitar-card");
   const deleteBtn = wrap.querySelector(".m-swipe-action-delete");
@@ -448,7 +451,7 @@ function attachMovieSwipe(wrap, movie) {
   function setOpenState(next) {
     openState = next;
     card.style.transition = "transform 0.2s ease";
-    card.style.transform = next === "delete" ? `translateX(${ACTION_WIDTH}px)` : "translateX(0)";
+    card.style.transform = next === "delete" ? `translateX(${-ACTION_WIDTH}px)` : "translateX(0)";
     if (next === "delete") mOpenSwipeCard = { wrap, close: () => setOpenState("closed") };
     else if (mOpenSwipeCard && mOpenSwipeCard.wrap === wrap) mOpenSwipeCard = null;
   }
@@ -470,9 +473,9 @@ function attachMovieSwipe(wrap, movie) {
       committed = true;
       card.setPointerCapture(e.pointerId);
     }
-    const base = openState === "delete" ? ACTION_WIDTH : 0;
+    const base = openState === "delete" ? -ACTION_WIDTH : 0;
     deltaX = raw;
-    const next = Math.max(0, Math.min(ACTION_WIDTH, base + raw));
+    const next = Math.max(-ACTION_WIDTH, Math.min(0, base + raw));
     card.style.transform = `translateX(${next}px)`;
   });
 
@@ -480,9 +483,9 @@ function attachMovieSwipe(wrap, movie) {
     if (!dragging) return;
     dragging = false;
     if (!committed) return;
-    const base = openState === "delete" ? ACTION_WIDTH : 0;
-    const finalPos = Math.max(0, Math.min(ACTION_WIDTH, base + deltaX));
-    setOpenState(finalPos > OPEN_THRESHOLD ? "delete" : "closed");
+    const base = openState === "delete" ? -ACTION_WIDTH : 0;
+    const finalPos = Math.max(-ACTION_WIDTH, Math.min(0, base + deltaX));
+    setOpenState(finalPos < -OPEN_THRESHOLD ? "delete" : "closed");
   };
 
   card.addEventListener("pointerup", onRelease);

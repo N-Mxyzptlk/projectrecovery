@@ -591,16 +591,18 @@ function renderHomeBalanceReminder(balance) {
 }
 
 /** Fills in the quick-log category options once financeCategoriesCache is
- *  loaded, then skins the <select> — done after the fact (not inline in
- *  the initial render) since categories load in parallel with everything
- *  else on Home, and enhanceSelect needs the real <option>s to exist first. */
+ *  loaded — done after the fact (not inline in the initial render) since
+ *  categories load in parallel with everything else on Home. Left as a
+ *  plain native <select> (not enhanceSelect-skinned): the custom popover
+ *  is positioned once at open time and doesn't track the trigger while the
+ *  page scrolls, which is exactly wrong for a field this far down a
+ *  scrolling page — the native dropdown has no such issue. */
 function populateQuickExpenseCategorySelect() {
   const select = document.getElementById("m-quick-expense-category");
   if (!select) return;
   select.innerHTML =
     `<option value="">Uncategorized</option>` +
     financeCategoriesCache.map((c) => `<option value="${c.id}">${escapeHtmlMobile(c.name)}</option>`).join("");
-  enhanceSelect("m-quick-expense-category");
 }
 
 /** One tap to log: amount + category, straight from Home — no sheet, no

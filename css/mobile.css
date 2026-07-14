@@ -896,6 +896,44 @@
   opacity: 0.7;
 }
 
+/* Guitar/Movies mobile row — one line for title+artist (marqueeing back
+   and forth if it's too long to fit, instead of clipping), one line
+   reserved for the rating only. .info needs flex:1 + min-width:0 for the
+   overflow math (and the marquee) to have a real box to measure against —
+   without it, text width was unconstrained, which is what was producing
+   the inconsistent "some rows indent, some don't" look row to row. */
+.m-guitar-card .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.m-guitar-title-line {
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.m-guitar-title-line .marquee-text {
+  display: inline-block;
+}
+
+.m-guitar-title-line.marquee-active .marquee-text {
+  animation: m-guitar-marquee 6s ease-in-out infinite;
+}
+
+@keyframes m-guitar-marquee {
+  0%, 15% { transform: translateX(0); }
+  45%, 55% { transform: translateX(var(--marquee-distance, 0)); }
+  85%, 100% { transform: translateX(0); }
+}
+
+.m-guitar-rating-line {
+  margin-top: 2px;
+  min-height: 13px; /* reserves the line's height even when a song has no rating yet, so rows stay the same height */
+}
+
 /* Individual editable sets inside the Journal detail sheet */
 .m-journal-set-row {
   display: flex;
@@ -1028,6 +1066,16 @@
   left: 0;
   background: var(--danger);
   border-radius: 14px 0 0 14px;
+}
+
+/* Guitar/Movies rows only have Delete (no Edit-via-swipe like Journal
+   cards do), and their own drag-to-reorder handle sits on the left — so
+   Delete moves to the right here specifically, keeping the two gestures
+   spatially separate instead of both living on the same edge. */
+.m-guitar-swipe-wrap .m-swipe-action-delete {
+  left: auto;
+  right: 0;
+  border-radius: 0 14px 14px 0;
 }
 
 .m-swipe-action-edit {
@@ -1440,9 +1488,10 @@
 .m-drawer-handle {
   position: fixed;
   left: 3px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  top: 50%;
+  transform: translateY(-50%);
   width: 5px;
-  height: 46px;
+  height: 40vh;
   background: var(--text-faint);
   opacity: 0.4;
   border: none;
@@ -1570,6 +1619,7 @@
   background: var(--border);
   border-radius: 2px;
   margin: 12px auto 16px;
+  touch-action: none; /* dedicated swipe-down-to-close drag target — hand it entirely to JS */
 }
 
 .m-sheet-body {

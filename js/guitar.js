@@ -652,18 +652,23 @@ function renderGuitarMobileListOnly() {
   wireGuitarMobileListRows();
 }
 
-/** Swipe right reveals Delete, same gesture as the Journal cards — swiping
- *  is handled by attachGuitarSongSwipe below; a plain tap/double-tap on the
- *  card itself (not a drag) opens the song's link if it has one. */
+/** Swipe left reveals Delete (see attachGuitarSongSwipe); a plain
+ *  tap/double-tap on the card itself (not a drag) opens the song's link if
+ *  it has one. Title+artist share a single marquee-on-overflow line
+ *  (activateMarqueeOverflow, called after these rows are actually in the
+ *  DOM); the second line is reserved for the rating alone, at a fixed
+ *  min-height so every row is the same height whether or not it has a
+ *  rating yet. */
 function renderGuitarSongRowMobile(song) {
+  const titleLine = song.artist ? `${escapeHtmlMobile(song.title)} · ${escapeHtmlMobile(song.artist)}` : escapeHtmlMobile(song.title);
   return `
     <div class="m-guitar-swipe-wrap m-swipe-owns-gesture" data-song-id="${song.id}">
       <button type="button" class="m-swipe-action-btn m-swipe-action-delete">Delete</button>
       <div class="m-guitar-card">
         ${guitarReorderEnabled() ? `<span class="drag-handle" title="Drag to reorder">&#9776;</span>` : ""}
         <div class="info">
-          <div class="name">${escapeHtmlMobile(song.title)}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</div>
-          <div class="detail">${song.artist ? escapeHtmlMobile(song.artist) : "Unknown artist"}${song.rating ? `<span class="rating-divider">|</span>${starRatingDisplayHtml(song.rating)}` : ""}${song.note ? " · " + escapeHtmlMobile(song.note) : ""}</div>
+          <div class="m-guitar-title-line"><span class="marquee-text">${titleLine}${song.link ? ` <span class="guitar-link-icon">&#128279;</span>` : ""}</span></div>
+          <div class="m-guitar-rating-line">${song.rating ? starRatingDisplayHtml(song.rating) : ""}</div>
           ${guitarTagsHtml(song, escapeHtmlMobile)}
         </div>
         <div class="m-set-row-actions">
@@ -749,6 +754,9 @@ function wireGuitarMobileListRows() {
       });
     });
   }
+
+  const listEl = document.getElementById("m-guitar-list");
+  if (listEl) activateMarqueeOverflow(listEl, ".m-guitar-title-line");
 }
 
 let mGuitarLastTapAt = 0;
@@ -758,6 +766,11 @@ let mGuitarLastTapSongId = null;
  *  right reveals Delete only, no edit action. Pointer capture is deferred
  *  until real horizontal movement is detected, so a plain tap still lets
  *  the Liked/Want-to-play buttons receive their own click normally. */
+/** Swipe LEFT reveals Delete (on the right) — deliberately the opposite of
+ *  the Journal cards' convention, since Delete living on the right keeps it
+ *  spatially clear of the drag-to-reorder handle on the left; the two
+ *  gestures fighting for the same edge was what made this hard to
+ *  trigger. */
 function attachGuitarSongSwipe(wrap, song) {
   const card = wrap.querySelector(".m-guitar-card");
   const deleteBtn = wrap.querySelector(".m-swipe-action-delete");
@@ -774,7 +787,7 @@ function attachGuitarSongSwipe(wrap, song) {
   function setOpenState(next) {
     openState = next;
     card.style.transition = "transform 0.2s ease";
-    card.style.transform = next === "delete" ? `translateX(${ACTION_WIDTH}px)` : "translateX(0)";
+    card.style.transform = next === "delete" ? `translateX(${-ACTION_WIDTH}px)` : "translateX(0)";
     if (next === "delete") mOpenSwipeCard = { wrap, close: () => setOpenState("closed") };
     else if (mOpenSwipeCard && mOpenSwipeCard.wrap === wrap) mOpenSwipeCard = null;
   }
@@ -796,9 +809,9 @@ function attachGuitarSongSwipe(wrap, song) {
       committed = true;
       card.setPointerCapture(e.pointerId);
     }
-    const base = openState === "delete" ? ACTION_WIDTH : 0;
+    const base = openState === "delete" ? -ACTION_WIDTH : 0;
     deltaX = raw;
-    const next = Math.max(0, Math.min(ACTION_WIDTH, base + raw));
+    const next = Math.max(-ACTION_WIDTH, Math.min(0, base + raw));
     card.style.transform = `translateX(${next}px)`;
   });
 
@@ -820,9 +833,9 @@ function attachGuitarSongSwipe(wrap, song) {
       return;
     }
 
-    const base = openState === "delete" ? ACTION_WIDTH : 0;
-    const finalPos = Math.max(0, Math.min(ACTION_WIDTH, base + deltaX));
-    setOpenState(finalPos > OPEN_THRESHOLD ? "delete" : "closed");
+    const base = openState === "delete" ? -ACTION_WIDTH : 0;
+    const finalPos = Math.max(-ACTION_WIDTH, Math.min(0, base + deltaX));
+    setOpenState(finalPos < -OPEN_THRESHOLD ? "delete" : "closed");
   };
 
   card.addEventListener("pointerup", onRelease);
