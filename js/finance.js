@@ -326,11 +326,17 @@ async function markPaymentCancelled(paymentId) {
 }
 
 /** Re-renders whichever finance screen(s) are currently visible, desktop
- *  and/or mobile, after a payment action changes the underlying data. */
+ *  and/or mobile, after ANY finance action changes the underlying data —
+ *  a payment status change, an expense, income, or balance adjustment.
+ *  Without this, a mutation only ever updated the one narrow list it was
+ *  triggered from (e.g. logging an expense from the Dashboard's own quick
+ *  action only refreshed the hidden Expenses tab), leaving whatever the
+ *  user was actually looking at stale until a full page reload. */
 async function refreshFinanceAfterAction() {
   await loadFinancePaymentsCache();
 
   if (mApp === "finance") {
+    await refreshFinanceMobileFeeds();
     renderFinanceMobileScreen();
     renderFabStack();
   }
@@ -338,6 +344,11 @@ async function refreshFinanceAfterAction() {
   const paymentsView = document.getElementById("view-payments");
   if (paymentsView && !paymentsView.classList.contains("hidden")) {
     renderFinancePaymentsLists();
+  }
+
+  const expensesView = document.getElementById("view-expenses");
+  if (expensesView && !expensesView.classList.contains("hidden")) {
+    loadFinanceExpenses();
   }
 
   const dashView = document.getElementById("view-findash");
@@ -979,7 +990,11 @@ function openExpenseModal(expenseId) {
     // Queued (offline/outage): the row isn't on the server yet, so
     // re-fetching now just wouldn't show it — it'll appear once the write
     // queue syncs (see the pending-sync badge) rather than being lost.
-    if (!queued) loadFinanceExpenses();
+    // Refreshes whichever finance screen is actually visible — this modal
+    // opens from both the Dashboard's own quick action and the Expenses
+    // tab, and only updating the Expenses list left the Dashboard's
+    // balance stale until a manual reload.
+    if (!queued) await refreshFinanceAfterAction();
   });
 }
 
@@ -987,7 +1002,7 @@ async function deleteExpense(id) {
   if (!(await uiConfirm("Delete this expense?"))) return;
   const { error, queued } = await writeWithQueue("finance_expenses", "delete", null, { match: { id } });
   if (error) return uiAlert("Failed to delete: " + error.message);
-  if (!queued) loadFinanceExpenses();
+  if (!queued) await refreshFinanceAfterAction();
 }
 
 /* ============================================
@@ -1029,7 +1044,7 @@ function openIncomeModal() {
       return;
     }
     closeModal();
-    loadFinanceDashboard();
+    await refreshFinanceAfterAction();
   });
 }
 
@@ -1079,7 +1094,7 @@ function openAdjustmentModal() {
       return;
     }
     closeModal();
-    loadFinanceDashboard();
+    await refreshFinanceAfterAction();
   });
 }
 
@@ -1087,7 +1102,7 @@ async function deleteBalanceEntry(id) {
   if (!(await uiConfirm("Delete this entry?"))) return;
   const { error } = await supabaseClient.from("finance_balance_entries").delete().eq("id", id);
   if (error) return uiAlert("Failed to delete: " + error.message);
-  loadFinanceDashboard();
+  await refreshFinanceAfterAction();
 }
 
 /* ============================================
