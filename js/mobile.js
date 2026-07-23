@@ -359,7 +359,7 @@ function attachEdgeSwipeDrawer() {
   // Fraction of screen width, not a fixed px count, so the reachable
   // swipe-start zone scales with device size. Computed fresh per
   // pointerdown so rotating the device is picked up automatically.
-  const OPEN_ZONE_RATIO = 0.8;
+  const OPEN_ZONE_RATIO = 1; // swipe-to-open is reachable from anywhere on screen
   const VERTICAL_CANCEL = 40; // px of vertical drift that cancels it (it's a scroll, not a swipe)
   const DRAG_START_THRESHOLD = 4; // px before a pointerdown is treated as a drag rather than a tap
   const COMMIT_RATIO = 0.35; // drag past 35% of the drawer's width before release keeps it open/closed
@@ -766,7 +766,7 @@ function renderActiveSession() {
   renderSessionTopbar();
 
   const main = document.getElementById("m-main");
-  const chips = stationsCache.slice(0, 6);
+  const chips = orderedStationsForChips().slice(0, 6);
 
   if (!mSelectedStationId && chips.length > 0) {
     mSelectedStationId = chips[0].id;
@@ -894,6 +894,11 @@ function wireSessionEvents() {
 
   document.getElementById("m-pr-toggle").addEventListener("click", () => {
     mIsPRAttemptMode = !mIsPRAttemptMode;
+    // A PR attempt is a max-effort single (or a few reps), not a repeat of
+    // last time's working-set rep count — so reps starts counting up from
+    // 1 while attempt mode is on, and reverts to the normal prefilled
+    // default (last time's reps) once it's turned back off.
+    mRepsValue = mIsPRAttemptMode ? 1 : mBaselineReps != null ? mBaselineReps : mRepsValue;
     renderActiveSession();
   });
 
@@ -924,10 +929,27 @@ function wireSetListButtons() {
   });
 }
 
+/** Deliberately NOT a full renderActiveSession() — that replaces
+ *  #m-station-row's innerHTML wholesale, which resets its scrollLeft back
+ *  to 0. Picking a station you had to scroll to find would then always
+ *  snap the chip row back to the front. Instead, update only what actually
+ *  changed: chip/increment active states, the selected-station label, and
+ *  the continuity card + steppers (via loadStationHistory, which already
+ *  writes directly into existing DOM nodes). */
 function selectStation(stationId) {
   mSelectedStationId = stationId;
   mWeightIncrement = getWeightIncrementPref(stationId);
-  renderActiveSession();
+
+  document.querySelectorAll(".m-station-chip[data-id]").forEach((chip) => {
+    chip.classList.toggle("active", chip.dataset.id === stationId);
+  });
+  const nameEl = document.getElementById("m-selected-station-name");
+  if (nameEl) nameEl.innerHTML = selectedStationName();
+  document.querySelectorAll(".m-increment-chip").forEach((chip) => {
+    chip.classList.toggle("active", parseFloat(chip.dataset.inc) === mWeightIncrement);
+  });
+
+  loadStationHistory(stationId);
 }
 
 /* ============================================
@@ -941,6 +963,36 @@ function getWeightIncrementPref(stationId) {
 
 function saveWeightIncrementPref(stationId, value) {
   localStorage.setItem(`wt-increment-${stationId}`, String(value));
+}
+
+/* ============================================
+   Station chip ordering — most-recently-used first (device-local, same
+   nicety-only reasoning as the weight-increment memory above). The rest
+   stay reachable via the "More..." sheet, which always lists every
+   station regardless of this ordering.
+   ============================================ */
+function getStationRecencyOrder() {
+  try {
+    return JSON.parse(localStorage.getItem("station-recency-order") || "[]");
+  } catch (e) {
+    return [];
+  }
+}
+
+function bumpStationRecency(stationId) {
+  if (!stationId) return;
+  const order = getStationRecencyOrder().filter((id) => id !== stationId);
+  order.unshift(stationId);
+  localStorage.setItem("station-recency-order", JSON.stringify(order.slice(0, 50)));
+}
+
+function orderedStationsForChips() {
+  const recencyOrder = getStationRecencyOrder();
+  const byId = new Map(stationsCache.map((s) => [s.id, s]));
+  const recent = recencyOrder.map((id) => byId.get(id)).filter(Boolean);
+  const recentIds = new Set(recent.map((s) => s.id));
+  const rest = stationsCache.filter((s) => !recentIds.has(s.id));
+  return [...recent, ...rest];
 }
 
 /* ============================================
@@ -1113,7 +1165,16 @@ async function loadStationHistory(stationId) {
       .neq("workout_id", mCurrentWorkout.id)
       .order("created_at", { ascending: false })
       .limit(20),
-    supabaseClient.from("workout_sets").select("weight").eq("station_id", stationId).order("weight", { ascending: false }).limit(1),
+    // A failed (or still-unconfirmed) PR attempt shouldn't count toward
+    // "best" — only ordinary sets and PR attempts explicitly marked
+    // successful are eligible.
+    supabaseClient
+      .from("workout_sets")
+      .select("weight")
+      .eq("station_id", stationId)
+      .or("is_pr_attempt.eq.false,pr_result.eq.success")
+      .order("weight", { ascending: false })
+      .limit(1),
   ]);
 
   const prWeight = prRes.data && prRes.data.length > 0 ? prRes.data[0].weight : null;
@@ -1215,10 +1276,18 @@ async function logSet() {
   const nextSetNumber = setsForStation.length + 1;
   const wasPRAttempt = mIsPRAttemptMode;
 
+  // Generated up front (not left to the DB default) so the set can be
+  // logged locally right away even if this write ends up queued for
+  // later — see js/writequeue.js. Reused as client_uuid too since it's
+  // already the idempotency key a retry needs.
+  const localId = crypto.randomUUID();
+
   beginMutation();
-  const { data, error } = await supabaseClient
-    .from("workout_sets")
-    .insert({
+  const { data, queued, error } = await writeWithQueue(
+    "workout_sets",
+    "upsert",
+    {
+      id: localId,
       workout_id: mCurrentWorkout.id,
       station_id: mSelectedStationId,
       set_number: nextSetNumber,
@@ -1228,11 +1297,11 @@ async function logSet() {
       // it into null, making those sets vanish from station progress
       // entirely instead of being graphed by reps.
       weight: mWeightValue,
-      client_uuid: crypto.randomUUID(),
+      client_uuid: localId,
       is_pr_attempt: wasPRAttempt,
-    })
-    .select("*, stations(name)")
-    .single();
+    },
+    { select: "*, stations(name)", single: true }
+  );
   endMutation();
 
   if (error) {
@@ -1242,20 +1311,44 @@ async function logSet() {
     return;
   }
 
-  mCurrentWorkout.workout_sets.push(data);
-  if (mStationHistory) mStationHistory.prWeight = Math.max(priorBest, mWeightValue);
+  // Queued (Supabase unreachable right now): build the same shape the
+  // server would've returned so the rest of this flow — and the set list,
+  // continuity card, etc. — can't tell the difference. It'll sync
+  // automatically once the connection's back.
+  const loggedSet =
+    data ||
+    {
+      id: localId,
+      workout_id: mCurrentWorkout.id,
+      station_id: mSelectedStationId,
+      set_number: nextSetNumber,
+      reps: mRepsValue,
+      weight: mWeightValue,
+      client_uuid: localId,
+      is_pr_attempt: wasPRAttempt,
+      pr_result: null,
+      stations: { name: stationsCache.find((s) => s.id === mSelectedStationId)?.name || "" },
+    };
+
+  mCurrentWorkout.workout_sets.push(loggedSet);
+  bumpStationRecency(mSelectedStationId);
+  // Only credit the new weight as "best" immediately for an ordinary set —
+  // a PR attempt's weight isn't confirmed until markPRResult() says it was
+  // a success (see there for the deferred bump), otherwise a failed
+  // attempt would count as a new best just for having been attempted.
+  if (!wasPRAttempt && mStationHistory) mStationHistory.prWeight = Math.max(priorBest, mWeightValue);
   mIsPRAttemptMode = false;
 
   if (wasPRAttempt) {
-    mPendingPRSetId = data.id;
+    mPendingPRSetId = loggedSet.id;
   }
 
   renderActiveSession();
 
   if (wasPRAttempt) {
-    renderPRTagPrompt(data.id);
+    renderPRTagPrompt(loggedSet.id);
   } else if (isNewPR) {
-    showPRBanner(data.stations.name, mWeightValue);
+    showPRBanner(loggedSet.stations.name, mWeightValue);
   }
 }
 
@@ -1278,7 +1371,7 @@ function renderPRTagPrompt(setId) {
 
 async function markPRResult(setId, result) {
   beginMutation();
-  const { error } = await supabaseClient.from("workout_sets").update({ pr_result: result }).eq("id", setId);
+  const { error } = await writeWithQueue("workout_sets", "update", { pr_result: result }, { match: { id: setId } });
   endMutation();
   if (!error) {
     const set = mCurrentWorkout.workout_sets.find((s) => s.id === setId);
@@ -1290,7 +1383,16 @@ async function markPRResult(setId, result) {
 
     if (result === "success") {
       const set2 = mCurrentWorkout.workout_sets.find((s) => s.id === setId);
-      if (set2) showPRBanner(set2.stations.name, set2.weight);
+      if (set2) {
+        showPRBanner(set2.stations.name, set2.weight);
+        // Only NOW does a PR attempt's weight count as the new best — it
+        // was withheld at log time (see logSet) so a failed attempt never
+        // touches it.
+        if (mStationHistory && set2.station_id === mSelectedStationId) {
+          mStationHistory.prWeight = Math.max(mStationHistory.prWeight || 0, set2.weight);
+          renderContinuityCard();
+        }
+      }
     }
   }
 }
@@ -1720,7 +1822,13 @@ async function openJournalDetailSheet(workout) {
 
       const [comparison, allTimePR] = await Promise.all([
         computeStationComparison(stationId, workout.started_at),
-        supabaseClient.from("workout_sets").select("weight").eq("station_id", stationId).order("weight", { ascending: false }).limit(1),
+        supabaseClient
+          .from("workout_sets")
+          .select("weight")
+          .eq("station_id", stationId)
+          .or("is_pr_attempt.eq.false,pr_result.eq.success")
+          .order("weight", { ascending: false })
+          .limit(1),
       ]);
 
       const prWeight = allTimePR.data && allTimePR.data.length > 0 ? allTimePR.data[0].weight : null;
@@ -1803,7 +1911,9 @@ async function computeStationComparison(stationId, beforeStartedAt) {
 
   const mostRecentWorkoutId = priorSets[0].workouts.id;
   const priorSessionSets = priorSets.filter((s) => s.workouts.id === mostRecentWorkoutId);
-  const bestWeight = Math.max(...priorSessionSets.map((s) => s.weight || 0));
+  // A failed/unconfirmed PR attempt shouldn't inflate "last time"'s number.
+  const eligibleSets = priorSessionSets.filter((s) => !s.is_pr_attempt || s.pr_result === "success");
+  const bestWeight = Math.max(...(eligibleSets.length > 0 ? eligibleSets : priorSessionSets).map((s) => s.weight || 0));
 
   return { bestWeight, date: priorSessionSets[0].workouts.started_at };
 }

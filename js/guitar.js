@@ -255,9 +255,18 @@ function guitarSongsInSetlist() {
   return guitarSongsCache.filter((s) => s.in_setlist);
 }
 
-/** Opens every setlist song's link in its own new tab so a play session
- *  can just Alt/Cmd-Tab between them instead of hunting through the
- *  catalogue mid-session. */
+/** Lists every setlist song with a saved link as a one-tap-to-open entry,
+ *  so a play session can just click through them into new tabs instead of
+ *  hunting through the catalogue mid-session.
+ *
+ *  Deliberately NOT auto-opening these via window.open() in a loop —
+ *  browsers only ever let the FIRST script-triggered window.open from a
+ *  single click through and silently block every one after that as a
+ *  pop-up (a hard security boundary, not something any amount of JS can
+ *  bypass). That made it look like the feature was broken ("only opens
+ *  1 and blocks the rest"). A real `<a target="_blank">` click is a
+ *  genuine user gesture per link, so it always works — every song here
+ *  opens reliably, at the cost of one tap each instead of zero. */
 async function loadGuitarSetlist() {
   const setlist = guitarSongsInSetlist();
   const withLinks = setlist.filter((s) => s.link);
@@ -265,35 +274,22 @@ async function loadGuitarSetlist() {
   if (setlist.length === 0) return uiAlert("Your setlist is empty — add songs to it first.");
   if (withLinks.length === 0) return uiAlert("No songs in your setlist have a saved link yet.");
 
-  // Browsers only ever let the FIRST window.open from one click through —
-  // every one after that is silently blocked as a popup, which is exactly
-  // why only the top song was opening. Anything blocked gets a one-tap
-  // fallback list instead of just vanishing.
-  const blocked = [];
-  withLinks.forEach((s) => {
-    const win = window.open(s.link, "_blank");
-    if (!win) blocked.push(s);
-  });
-
-  if (blocked.length > 0) {
-    showBlockedSetlistLinks(blocked);
-  } else if (withLinks.length < setlist.length) {
-    await uiAlert(`Opened ${withLinks.length} of ${setlist.length} songs — the rest have no link saved.`);
-  }
-}
-
-function showBlockedSetlistLinks(songs) {
   openModal(`
-    <h3>Finish opening your setlist</h3>
-    <p style="color:var(--text-muted);font-size:13px;margin:-8px 0 16px;">Your browser blocked the rest as pop-ups — tap each to open it in a new tab.</p>
+    <h3>Your setlist</h3>
+    <p style="color:var(--text-muted);font-size:13px;margin:-8px 0 16px;">Tap each to open it in a new tab — browsers only allow one pop-up per click, so this can't be done in one tap for the whole list.</p>
     <div class="modal-actions" style="flex-direction:column;gap:8px;">
-      ${songs
+      ${withLinks
         .map(
           (s) =>
             `<a class="btn-ghost" style="display:block;text-align:center;text-decoration:none;" href="${escapeHtml(s.link)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a>`
         )
         .join("")}
     </div>
+    ${
+      withLinks.length < setlist.length
+        ? `<p style="color:var(--text-faint);font-size:12px;margin:12px 0 0;">${setlist.length - withLinks.length} song(s) in your setlist have no saved link.</p>`
+        : ""
+    }
     <div class="modal-actions">
       <button type="button" class="btn-ghost" onclick="closeModal()">Close</button>
     </div>
@@ -461,7 +457,9 @@ function wireGuitarSongRows() {
   document.querySelectorAll("#guitar-songs-list .card-row[data-song-id]").forEach((row) => {
     row.addEventListener("dblclick", () => {
       const song = guitarSongsCache.find((s) => s.id === row.dataset.songId);
-      if (song && song.link) window.location.href = song.link;
+      // Opens as a new tab in this same Chrome window — window.location.href
+      // was navigating the app itself away to the link, losing all state.
+      if (song && song.link) window.open(song.link, "_blank", "noopener");
     });
   });
 
@@ -825,7 +823,7 @@ function attachGuitarSongSwipe(wrap, song) {
       if (mGuitarLastTapSongId === song.id && now - mGuitarLastTapAt < 350) {
         mGuitarLastTapAt = 0;
         mGuitarLastTapSongId = null;
-        if (song.link) window.location.href = song.link;
+        if (song.link) window.open(song.link, "_blank", "noopener");
       } else {
         mGuitarLastTapAt = now;
         mGuitarLastTapSongId = song.id;

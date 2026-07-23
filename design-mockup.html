@@ -1,0 +1,654 @@
+<meta charset="UTF-8" />
+<title>NLAB Environment — Redesign Direction (Full App)</title>
+<style>
+  :root {
+    --metal-0: #16171c;
+    --metal-1: #1e2027;
+    --metal-2: #272a33;
+    --metal-3: #31343e;
+    --edge-hi: rgba(255, 255, 255, 0.07);
+    --edge-lo: rgba(0, 0, 0, 0.45);
+    --ink: #eae7f2;
+    --ink-dim: #9a96a8;
+    --ink-faint: #6d6979;
+
+    --lilac: #c4b6ea;
+    --lilac-strong: #9c86d8;
+    --lilac-ink: #16171c;
+    --sage: #a7d9c3;
+    --sage-strong: #7fc7a8;
+    --peach: #f0c9a0;
+    --rose: #e6a9b0;
+
+    --font-display: "Arial Narrow", "Roboto Condensed", "Helvetica Neue Condensed", sans-serif;
+    --font-mono: Consolas, "SF Mono", "Cascadia Mono", "Courier New", monospace;
+
+    --r: 6px;
+    --gap: 14px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--metal-0);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); }
+  ::selection { background: var(--lilac); color: var(--lilac-ink); }
+
+  .brushed {
+    background-color: var(--metal-1);
+    background-image: repeating-linear-gradient(115deg, var(--edge-hi) 0px, transparent 1px, transparent 3px, var(--edge-lo) 4px, transparent 5px, transparent 11px);
+  }
+  .panel {
+    background-color: var(--metal-2);
+    background-image: repeating-linear-gradient(115deg, var(--edge-hi) 0px, transparent 1px, transparent 3px, transparent 11px);
+    border-radius: var(--r);
+    border-top: 1px solid var(--edge-hi);
+    border-bottom: 1px solid var(--edge-lo);
+    box-shadow: 0 1px 0 var(--edge-hi) inset, 0 8px 18px rgba(0, 0, 0, 0.25);
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 56px 28px 20px;
+  }
+  .masthead .eyebrow {
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 11px;
+    color: var(--lilac);
+  }
+  .masthead h1 {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    font-size: 32px;
+    margin: 10px 0 10px;
+    text-wrap: balance;
+  }
+  .masthead p {
+    color: var(--ink-dim);
+    font-size: 13px;
+    line-height: 1.65;
+    max-width: 66ch;
+    margin: 0;
+  }
+  .tokens { display: flex; gap: 9px; margin: 20px 0 0; flex-wrap: wrap; }
+  .swatch {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--ink-dim);
+    background: var(--metal-1); border: 1px solid var(--edge-lo);
+    border-radius: 999px; padding: 5px 11px 5px 7px;
+  }
+  .swatch i { width: 12px; height: 12px; border-radius: 3px; display: block; box-shadow: 0 1px 0 var(--edge-hi) inset; }
+
+  .section-head {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 40px 28px 18px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .section-head .num {
+    font-family: var(--font-display);
+    font-size: 12px;
+    color: var(--lilac);
+    letter-spacing: 0.1em;
+  }
+  .section-head h2 {
+    font-size: 19px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .section-head .rule { flex: 1; height: 1px; background: var(--edge-lo); }
+
+  /* ---------- shared bits ---------- */
+  .led { width: 6px; height: 6px; border-radius: 50%; display: inline-block; box-shadow: 0 0 5px currentColor; flex-shrink: 0; }
+  .led.sage { background: var(--sage); color: var(--sage); }
+  .led.peach { background: var(--peach); color: var(--peach); }
+  .led.rose { background: var(--rose); color: var(--rose); }
+  .led.lilac { background: var(--lilac); color: var(--lilac); }
+
+  .tag {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 2px 7px; border-radius: 3px; font-weight: 700;
+  }
+  .tag.sage { color: var(--metal-0); background: var(--sage); }
+  .tag.peach { color: var(--metal-0); background: var(--peach); }
+  .tag.rose { color: var(--metal-0); background: var(--rose); }
+  .tag.ghost { color: var(--ink-faint); background: var(--metal-1); border: 1px solid var(--edge-lo); }
+
+  .btn {
+    border: none; border-radius: 4px; cursor: pointer;
+    font-family: var(--font-display); font-weight: 700; letter-spacing: 0.04em;
+  }
+  .btn-lilac { color: var(--lilac-ink); background: linear-gradient(150deg, var(--lilac), var(--lilac-strong)); box-shadow: 0 1px 0 var(--edge-hi) inset; }
+  .btn-sage { color: var(--metal-0); background: linear-gradient(150deg, var(--sage), var(--sage-strong)); box-shadow: 0 1px 0 var(--edge-hi) inset; }
+  .btn-ghost { color: var(--ink-dim); background: var(--metal-1); border: 1px solid var(--edge-lo); }
+
+  input, select {
+    background: var(--metal-1); border: 1px solid var(--edge-lo); border-radius: 4px;
+    color: var(--ink); font-family: var(--font-mono); font-size: 12.5px; padding: 9px 10px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--lilac); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-family: var(--font-display); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); font-weight: 400; padding: 0 10px 8px; }
+  td { padding: 9px 10px; border-top: 1px solid var(--edge-lo); }
+  tr:first-child td { border-top: none; }
+
+  /* ================================================
+     DESKTOP
+     ================================================ */
+  .desktop-wrap { max-width: 1360px; margin: 0 auto 60px; padding: 0 28px; }
+  .desktop-frame {
+    display: flex;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 var(--edge-hi) inset, 0 20px 44px rgba(0, 0, 0, 0.35);
+    height: 760px;
+    margin-bottom: 34px;
+  }
+  .desktop-frame:last-child { margin-bottom: 0; }
+  .d-sidebar {
+    width: 210px; flex-shrink: 0;
+    background: var(--metal-1);
+    border-right: 1px solid var(--edge-lo);
+    display: flex; flex-direction: column;
+    padding: 20px 14px;
+  }
+  .d-brand { display: flex; align-items: center; gap: 9px; padding: 0 4px 20px; }
+  .d-brand .chip { width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(145deg, var(--lilac), var(--sage)); box-shadow: 0 1px 0 var(--edge-hi) inset; flex-shrink: 0; }
+  .d-brand .name { font-family: var(--font-display); font-weight: 700; font-size: 14px; letter-spacing: 0.04em; }
+  .d-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .d-nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 4px;
+    font-size: 12.5px; color: var(--ink-dim);
+  }
+  .d-nav-item .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-faint); flex-shrink: 0; }
+  .d-nav-item.active { background: var(--metal-2); color: var(--ink); box-shadow: inset 2px 0 0 var(--lilac); }
+  .d-nav-item.active .dot { background: var(--lilac); box-shadow: 0 0 5px var(--lilac); }
+  .d-status { display: flex; align-items: center; gap: 7px; padding: 10px 8px 2px; border-top: 1px solid var(--edge-lo); margin-top: 8px; font-size: 10.5px; color: var(--ink-faint); letter-spacing: 0.03em; }
+
+  .d-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--metal-0); overflow: hidden; }
+  .d-topbar { display: flex; align-items: center; justify-content: space-between; padding: 20px 28px; border-bottom: 1px solid var(--edge-lo); flex-shrink: 0; }
+  .d-topbar h3 { font-size: 18px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .d-topbar .sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
+  .d-content { flex: 1; overflow: auto; padding: 22px 28px 28px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: var(--gap); }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); }
+  .stack { display: flex; flex-direction: column; gap: var(--gap); }
+  .card { padding: 16px 18px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+  .card-head h4 { font-size: 12.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); }
+  .card-head .meta { font-size: 10.5px; color: var(--ink-faint); }
+
+  .stat-tile { padding: 14px 16px; }
+  .stat-tile .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); margin-bottom: 8px; }
+  .stat-tile .value { font-family: var(--font-display); font-size: 22px; font-variant-numeric: tabular-nums; }
+  .stat-tile .value.sage { color: var(--sage); }
+  .stat-tile .value.lilac { color: var(--lilac); }
+
+  .row-line { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--edge-lo); font-size: 12.5px; }
+  .row-line:first-child { border-top: none; }
+  .row-line .l { display: flex; align-items: center; gap: 8px; }
+  .row-line .num { font-variant-numeric: tabular-nums; }
+
+  /* mini calendar (finance) */
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 4px; }
+  .cal-cell {
+    aspect-ratio: 1; border-radius: 4px; background: var(--metal-1);
+    display: flex; align-items: flex-start; justify-content: flex-end;
+    padding: 4px; font-size: 10px; color: var(--ink-faint); position: relative;
+  }
+  .cal-cell.today { box-shadow: inset 0 0 0 1px var(--lilac); color: var(--lilac); }
+  .cal-cell .due { position: absolute; bottom: 4px; left: 4px; width: 5px; height: 5px; border-radius: 50%; }
+  .cal-dow { font-size: 9px; text-align: center; color: var(--ink-faint); letter-spacing: 0.04em; }
+
+  /* ================================================
+     MOBILE
+     ================================================ */
+  .stage { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; padding: 10px 20px 90px; max-width: 1360px; margin: 0 auto; }
+  .phone-label { font-family: var(--font-display); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-faint); text-align: center; margin-bottom: 9px; }
+  .device { width: 300px; border-radius: 30px; padding: 12px; background: linear-gradient(155deg, var(--metal-3), var(--metal-1)); box-shadow: 0 1px 0 var(--edge-hi) inset, 0 20px 40px rgba(0, 0, 0, 0.32); }
+  .screen { border-radius: 19px; overflow: hidden; background: var(--metal-0); height: 580px; display: flex; flex-direction: column; position: relative; }
+
+  .m-top { padding: 14px 14px 10px; flex-shrink: 0; }
+  .m-clock { font-family: var(--font-display); font-size: 25px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .m-date-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; }
+  .m-date { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.04em; }
+  .m-balance { font-family: var(--font-mono); font-weight: 700; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .m-body { flex: 1; padding: 3px 12px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .m-card { padding: 12px 13px; }
+  .m-card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px; }
+  .m-card-head h4 { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .m-card-head .meta { font-size: 9.5px; color: var(--ink-faint); }
+  .m-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; font-size: 11.5px; border-top: 1px solid var(--edge-lo); }
+  .m-row:first-child { border-top: none; }
+  .m-row .l { display: flex; align-items: center; gap: 7px; }
+
+  .m-topbar-simple { display: flex; align-items: center; justify-content: space-between; padding: 13px 14px; flex-shrink: 0; border-bottom: 1px solid var(--edge-lo); }
+  .m-title { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .m-back { width: 22px; height: 22px; border-radius: 4px; background: var(--metal-1); border: 1px solid var(--edge-lo); color: var(--ink-dim); display: flex; align-items: center; justify-content: center; font-size: 12px; }
+
+  /* login */
+  .m-login-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .m-login-card { width: 100%; padding: 26px 22px; }
+  .m-brand-mark { display: flex; align-items: center; gap: 9px; margin-bottom: 3px; }
+  .m-brand-chip { width: 27px; height: 27px; border-radius: 7px; background: linear-gradient(145deg, var(--lilac), var(--sage)); box-shadow: 0 1px 0 var(--edge-hi) inset; flex-shrink: 0; }
+  .m-brand-name { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: 0.04em; }
+  .m-brand-sub { color: var(--ink-faint); font-size: 11px; margin: 2px 0 22px; }
+  .m-field { margin-bottom: 14px; }
+  .m-field label { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); margin-bottom: 6px; }
+  .m-field input { width: 100%; }
+  .m-login-card .btn { width: 100%; padding: 11px; font-size: 12px; margin-top: 4px; }
+
+  /* station chips (workout) */
+  .m-station-row { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .m-station-row::-webkit-scrollbar { display: none; }
+  .m-chip { flex-shrink: 0; padding: 8px 13px; border-radius: 999px; background: var(--metal-1); border: 1px solid var(--edge-lo); font-size: 11px; color: var(--ink-dim); }
+  .m-chip.active { background: var(--lilac); color: var(--lilac-ink); border-color: var(--lilac); font-weight: 700; }
+  .m-stepper { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .m-stepper button { width: 30px; height: 30px; border-radius: 4px; background: var(--metal-1); border: 1px solid var(--edge-lo); color: var(--ink); font-size: 15px; }
+  .m-stepper .val { flex: 1; text-align: center; font-family: var(--font-display); font-size: 17px; font-variant-numeric: tabular-nums; }
+  .m-stepper-label { font-size: 9.5px; text-transform: uppercase; color: var(--ink-faint); letter-spacing: 0.06em; margin-top: 8px; }
+  .m-pr-toggle { width: 100%; padding: 8px; font-size: 10.5px; border-radius: 4px; background: var(--metal-1); border: 1px solid var(--edge-lo); color: var(--ink-dim); font-family: var(--font-display); letter-spacing: 0.04em; margin-top: 10px; }
+  .m-pr-toggle.active { background: rgba(240, 201, 160, 0.15); border-color: var(--peach); color: var(--peach); }
+  .m-log-btn { width: 100%; padding: 11px; font-size: 12px; margin-top: 8px; }
+
+  /* guitar swipe row */
+  .m-swipe-wrap { position: relative; border-radius: 5px; overflow: hidden; }
+  .m-swipe-delete { position: absolute; right: 0; top: 0; bottom: 0; width: 64px; background: var(--rose); color: var(--metal-0); display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700; }
+  .m-song-row { display: flex; align-items: center; gap: 9px; padding: 10px 11px; position: relative; }
+  .m-song-row .handle { color: var(--ink-faint); font-size: 12px; }
+  .m-song-title { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .m-song-rating { font-size: 10px; color: var(--peach); margin-top: 2px; }
+
+  /* calendar mobile */
+  .m-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-top: 6px; }
+  .m-cal-cell { aspect-ratio: 1; border-radius: 3px; background: var(--metal-1); font-size: 8.5px; color: var(--ink-faint); display: flex; align-items: flex-start; justify-content: flex-end; padding: 3px; position: relative; }
+  .m-cal-cell .due { position: absolute; bottom: 3px; left: 3px; width: 4px; height: 4px; border-radius: 50%; }
+  .m-cal-dow { font-size: 8px; text-align: center; color: var(--ink-faint); }
+
+  /* drawer */
+  .m-drawer-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.55); display: flex; }
+  .m-drawer { width: 74%; background: var(--metal-1); border-right: 1px solid var(--edge-lo); padding: 18px 14px; display: flex; flex-direction: column; }
+  .m-drawer-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 5px; font-size: 12px; color: var(--ink-dim); }
+  .m-drawer-item.active { background: var(--metal-2); color: var(--ink); box-shadow: inset 2px 0 0 var(--lilac); }
+  .m-drawer-item .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-faint); }
+  .m-drawer-item.active .dot { background: var(--lilac); box-shadow: 0 0 5px var(--lilac); }
+  .m-drawer-handle { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); width: 4px; height: 34%; background: var(--ink-faint); opacity: 0.5; border-radius: 999px; }
+
+  .m-status-strip { display: flex; align-items: center; gap: 6px; padding: 9px 13px; border-top: 1px solid var(--edge-lo); font-size: 9px; color: var(--ink-faint); letter-spacing: 0.05em; flex-shrink: 0; }
+</style>
+
+<div class="masthead">
+  <div class="eyebrow">Design direction — v2, full app</div>
+  <h1>Anodized instrument panel</h1>
+  <p>
+    Brushed-metal panels tinted in soft anodized pastels instead of gunmetal
+    grey. Tight machined corners, one accent spent per screen, status carried
+    by small LED dots. Same tokens, same components, applied consistently
+    across the sidebar desktop layout and the mobile drawer layout.
+  </p>
+  <div class="tokens">
+    <span class="swatch"><i style="background:var(--metal-1)"></i>metal</span>
+    <span class="swatch"><i style="background:var(--lilac)"></i>lilac — accent</span>
+    <span class="swatch"><i style="background:var(--sage)"></i>sage — go / success</span>
+    <span class="swatch"><i style="background:var(--peach)"></i>peach — attention</span>
+    <span class="swatch"><i style="background:var(--rose)"></i>rose — danger</span>
+  </div>
+</div>
+
+<div class="section-head"><span class="num">01</span><h2>Desktop</h2><span class="rule"></span></div>
+<div class="desktop-wrap">
+
+  <!-- ============ DESKTOP: HOME ============ -->
+  <div class="desktop-frame">
+    <div class="d-sidebar">
+      <div class="d-brand"><span class="chip"></span><span class="name">NLAB ENVIRONMENT</span></div>
+      <div class="d-nav">
+        <div class="d-nav-item active"><span class="dot"></span>Home</div>
+        <div class="d-nav-item"><span class="dot"></span>Workout</div>
+        <div class="d-nav-item"><span class="dot"></span>Finance</div>
+        <div class="d-nav-item"><span class="dot"></span>Guitar</div>
+        <div class="d-nav-item"><span class="dot"></span>Movies</div>
+        <div class="d-nav-item"><span class="dot"></span>Settings</div>
+      </div>
+      <div class="d-status"><span class="led sage"></span>Status: Running</div>
+    </div>
+    <div class="d-main brushed">
+      <div class="d-topbar">
+        <div><h3>Home</h3><div class="sub">Thursday, July 23</div></div>
+        <div class="m-balance" style="font-size:14px;color:var(--sage);">BALANCE $184.20</div>
+      </div>
+      <div class="d-content">
+        <div class="grid-2">
+          <div class="stack">
+            <div class="panel card">
+              <div class="card-head"><h4>To-Do</h4><span class="meta">2 open</span></div>
+              <div class="row-line"><span class="l"><input type="checkbox" />Refill chalk, wraps</span></div>
+              <div class="row-line"><span class="l"><input type="checkbox" />Book physio — shoulder</span></div>
+              <div class="row-line"><span class="l" style="color:var(--ink-faint);text-decoration:line-through;"><input type="checkbox" checked />Log rent payment</span></div>
+            </div>
+            <div class="panel card">
+              <div class="card-head"><h4>Payment Reminders</h4><span class="meta">Next 14 days</span></div>
+              <div class="row-line"><span class="l"><span class="led peach"></span>Internet</span><span class="num">$54.00 · Fri</span></div>
+              <div class="row-line"><span class="l"><span class="led rose"></span>Gym Membership</span><span class="num">$39.99 · overdue</span></div>
+              <div class="row-line"><span class="l"><span class="led sage"></span>Salary</span><span class="num">+$2,400 · in 9d</span></div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="panel card">
+              <div class="card-head"><h4>Weather</h4><span class="meta">Auckland</span></div>
+              <div style="display:flex;align-items:baseline;gap:10px;">
+                <span style="font-family:var(--font-display);font-size:30px;">17°</span>
+                <span style="font-size:11.5px;color:var(--ink-dim);">Light rain · feels 15°</span>
+              </div>
+            </div>
+            <div class="panel card">
+              <div class="card-head"><h4>Quick Log</h4></div>
+              <div style="display:flex;gap:8px;">
+                <input value="12.50" style="flex:1;min-width:0;" />
+                <select style="width:100px;"><option>Food</option></select>
+                <button class="btn btn-lilac" style="padding:9px 16px;font-size:11.5px;">Log</button>
+              </div>
+            </div>
+            <div class="panel card">
+              <button class="btn btn-sage" style="width:100%;padding:13px;font-size:12.5px;text-transform:uppercase;">Start Workout</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DESKTOP: WORKOUT ============ -->
+  <div class="desktop-frame">
+    <div class="d-sidebar">
+      <div class="d-brand"><span class="chip"></span><span class="name">NLAB ENVIRONMENT</span></div>
+      <div class="d-nav">
+        <div class="d-nav-item"><span class="dot"></span>Home</div>
+        <div class="d-nav-item active"><span class="dot"></span>Workout</div>
+        <div class="d-nav-item"><span class="dot"></span>Finance</div>
+        <div class="d-nav-item"><span class="dot"></span>Guitar</div>
+        <div class="d-nav-item"><span class="dot"></span>Movies</div>
+        <div class="d-nav-item"><span class="dot"></span>Settings</div>
+      </div>
+      <div class="d-status"><span class="led sage"></span>Status: Running</div>
+    </div>
+    <div class="d-main brushed">
+      <div class="d-topbar">
+        <div><h3>Workout</h3><div class="sub">42 sessions logged</div></div>
+        <button class="btn btn-ghost" style="padding:9px 16px;font-size:11.5px;">Manage Stations</button>
+      </div>
+      <div class="d-content">
+        <div class="grid-3" style="margin-bottom:14px;">
+          <div class="panel stat-tile"><div class="label">Days since last log</div><div class="value">2</div></div>
+          <div class="panel stat-tile"><div class="label">Best improved</div><div class="value sage">Squat +14%</div></div>
+          <div class="panel stat-tile"><div class="label">Biggest gain (30d)</div><div class="value lilac">Bench +2.5kg</div></div>
+        </div>
+        <div class="panel card">
+          <div class="card-head"><h4>Recent Sessions</h4></div>
+          <table>
+            <tr><th>Session</th><th>Date</th><th>Sets</th><th>Highlight</th></tr>
+            <tr><td>Session 42</td><td>Jul 22</td><td>14</td><td><span class="tag sage">PR HIT</span> Bench 82.5kg</td></tr>
+            <tr><td>Session 41</td><td>Jul 20</td><td>12</td><td>—</td></tr>
+            <tr><td>Session 40</td><td>Jul 18</td><td>16</td><td><span class="tag peach">ATTEMPT FAILED</span> Squat 140kg</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DESKTOP: FINANCE ============ -->
+  <div class="desktop-frame">
+    <div class="d-sidebar">
+      <div class="d-brand"><span class="chip"></span><span class="name">NLAB ENVIRONMENT</span></div>
+      <div class="d-nav">
+        <div class="d-nav-item"><span class="dot"></span>Home</div>
+        <div class="d-nav-item"><span class="dot"></span>Workout</div>
+        <div class="d-nav-item active"><span class="dot"></span>Finance</div>
+        <div class="d-nav-item"><span class="dot"></span>Guitar</div>
+        <div class="d-nav-item"><span class="dot"></span>Movies</div>
+        <div class="d-nav-item"><span class="dot"></span>Settings</div>
+      </div>
+      <div class="d-status"><span class="led sage"></span>Status: Running</div>
+    </div>
+    <div class="d-main brushed">
+      <div class="d-topbar">
+        <div><h3>Finance</h3><div class="sub">July 2026</div></div>
+        <div class="m-balance" style="font-size:14px;color:var(--sage);">BALANCE $184.20</div>
+      </div>
+      <div class="d-content">
+        <div class="grid-2">
+          <div class="panel card">
+            <div class="card-head"><h4>Calendar</h4><span class="meta">July</span></div>
+            <div class="cal-grid">
+              <span class="cal-dow">S</span><span class="cal-dow">M</span><span class="cal-dow">T</span><span class="cal-dow">W</span><span class="cal-dow">T</span><span class="cal-dow">F</span><span class="cal-dow">S</span>
+              <div class="cal-cell"></div><div class="cal-cell"></div><div class="cal-cell">1</div><div class="cal-cell">2</div><div class="cal-cell">3</div><div class="cal-cell">4<span class="due" style="background:var(--peach);"></span></div><div class="cal-cell">5</div>
+              <div class="cal-cell">6</div><div class="cal-cell">7</div><div class="cal-cell">8</div><div class="cal-cell">9</div><div class="cal-cell">10</div><div class="cal-cell">11</div><div class="cal-cell">12</div>
+              <div class="cal-cell">13</div><div class="cal-cell">14</div><div class="cal-cell">15</div><div class="cal-cell">16</div><div class="cal-cell">17</div><div class="cal-cell">18</div><div class="cal-cell">19</div>
+              <div class="cal-cell">20</div><div class="cal-cell">21</div><div class="cal-cell">22</div><div class="cal-cell today">23</div><div class="cal-cell">24<span class="due" style="background:var(--rose);"></span></div><div class="cal-cell">25</div><div class="cal-cell">26</div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="panel card">
+              <div class="card-head"><h4>Upcoming</h4></div>
+              <div class="row-line"><span class="l"><span class="led peach"></span>Internet</span><span class="num">$54.00</span></div>
+              <div class="row-line"><span class="l"><span class="led rose"></span>Gym Membership</span><span class="num">$39.99</span></div>
+              <div class="row-line"><span class="l"><span class="led ghost" style="background:var(--ink-faint);"></span>Netflix</span><span class="num">$15.49</span></div>
+            </div>
+            <div class="panel card">
+              <div class="card-head"><h4>Recent Expenses</h4></div>
+              <div class="row-line"><span class="l">Groceries <span class="tag ghost">Food</span></span><span class="num">$62.10</span></div>
+              <div class="row-line"><span class="l">Uber <span class="tag ghost">Transport</span></span><span class="num">$18.40</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DESKTOP: SETTINGS ============ -->
+  <div class="desktop-frame">
+    <div class="d-sidebar">
+      <div class="d-brand"><span class="chip"></span><span class="name">NLAB ENVIRONMENT</span></div>
+      <div class="d-nav">
+        <div class="d-nav-item"><span class="dot"></span>Home</div>
+        <div class="d-nav-item"><span class="dot"></span>Workout</div>
+        <div class="d-nav-item"><span class="dot"></span>Finance</div>
+        <div class="d-nav-item"><span class="dot"></span>Guitar</div>
+        <div class="d-nav-item"><span class="dot"></span>Movies</div>
+        <div class="d-nav-item active"><span class="dot"></span>Settings</div>
+      </div>
+      <div class="d-status"><span class="led sage"></span>Status: Running</div>
+    </div>
+    <div class="d-main brushed">
+      <div class="d-topbar"><div><h3>Settings</h3><div class="sub">App modules &amp; account</div></div></div>
+      <div class="d-content">
+        <div class="panel card" style="max-width:460px;">
+          <div class="card-head"><h4>App Modules</h4><span class="meta">Drag to reorder</span></div>
+          <div class="row-line"><span class="l"><span class="handle" style="color:var(--ink-faint);">&#9776;</span>Workout</span><input type="checkbox" checked /></div>
+          <div class="row-line"><span class="l"><span class="handle" style="color:var(--ink-faint);">&#9776;</span>Finance</span><input type="checkbox" checked /></div>
+          <div class="row-line"><span class="l"><span class="handle" style="color:var(--ink-faint);">&#9776;</span>Guitar</span><input type="checkbox" checked /></div>
+          <div class="row-line"><span class="l"><span class="handle" style="color:var(--ink-faint);">&#9776;</span>Movies</span><input type="checkbox" /></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section-head"><span class="num">02</span><h2>Mobile</h2><span class="rule"></span></div>
+<div class="stage">
+
+  <!-- LOGIN -->
+  <div>
+    <div class="phone-label">Login</div>
+    <div class="device"><div class="screen brushed">
+      <div class="m-login-wrap">
+        <div class="panel m-login-card">
+          <div class="m-brand-mark"><span class="m-brand-chip"></span><span class="m-brand-name">NLAB ENVIRONMENT</span></div>
+          <div class="m-brand-sub">Sign in to continue</div>
+          <div class="m-field"><label>Username</label><input type="text" /></div>
+          <div class="m-field"><label>Password</label><input type="password" /></div>
+          <button class="btn btn-lilac">Sign in</button>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- HOME -->
+  <div>
+    <div class="phone-label">Home</div>
+    <div class="device"><div class="screen brushed">
+      <div class="m-top">
+        <div class="m-clock">21:42</div>
+        <div class="m-date-row"><span class="m-date">THU, JUL 23</span><span class="m-balance" style="color:var(--sage);">$184.20</span></div>
+      </div>
+      <div class="m-body">
+        <div class="panel m-card">
+          <div class="m-card-head"><h4>To-Do</h4><span class="meta">2 open</span></div>
+          <div class="m-row"><span class="l"><input type="checkbox" style="width:13px;height:13px;" />Refill chalk, wraps</span></div>
+          <div class="m-row"><span class="l"><input type="checkbox" style="width:13px;height:13px;" />Book physio</span></div>
+        </div>
+        <div class="panel m-card">
+          <div class="m-card-head"><h4>Payments</h4><span class="meta">14 days</span></div>
+          <div class="m-row"><span class="l"><span class="led peach"></span>Internet</span><span>$54.00</span></div>
+          <div class="m-row"><span class="l"><span class="led rose"></span>Gym</span><span>$39.99</span></div>
+        </div>
+        <div class="panel m-card">
+          <div class="m-card-head"><h4>Finance</h4></div>
+          <div style="display:flex;gap:6px;">
+            <input value="12.50" style="flex:1;min-width:0;padding:8px 9px;font-size:11.5px;" />
+            <select style="width:78px;padding:8px 9px;font-size:11.5px;"><option>Food</option></select>
+            <button class="btn btn-lilac" style="padding:8px 13px;font-size:11px;">Log</button>
+          </div>
+        </div>
+        <div class="panel m-card"><button class="btn btn-sage" style="width:100%;padding:11px;font-size:11.5px;text-transform:uppercase;">Start Workout</button></div>
+      </div>
+      <div class="m-status-strip"><span class="led sage"></span>Status: Running</div>
+    </div></div>
+  </div>
+
+  <!-- WORKOUT ACTIVE -->
+  <div>
+    <div class="phone-label">Workout</div>
+    <div class="device"><div class="screen brushed">
+      <div class="m-topbar-simple"><span class="m-title">Session #42</span><span class="led sage"></span></div>
+      <div class="m-body">
+        <div class="m-station-row">
+          <span class="m-chip active">Bench Press</span>
+          <span class="m-chip">Squat Rack</span>
+          <span class="m-chip">Lat Pulldown</span>
+          <span class="m-chip">More...</span>
+        </div>
+        <div class="panel m-card">
+          <div class="m-card-head"><h4>Bench Press</h4><span class="meta">Last: 8×20kg</span></div>
+          <div class="m-stepper-label">Reps</div>
+          <div class="m-stepper"><button>−</button><span class="val">8</span><button>+</button></div>
+          <div class="m-stepper-label">Weight (kg)</div>
+          <div class="m-stepper"><button>−</button><span class="val">20</span><button>+</button></div>
+          <button class="m-pr-toggle">PR Attempt</button>
+          <button class="btn btn-lilac m-log-btn">Log Set</button>
+        </div>
+      </div>
+      <div class="m-status-strip"><span class="led sage"></span>Status: Running</div>
+    </div></div>
+  </div>
+
+  <!-- FINANCE -->
+  <div>
+    <div class="phone-label">Finance</div>
+    <div class="device"><div class="screen brushed">
+      <div class="m-topbar-simple"><span class="m-title">Finance</span><span class="m-balance" style="color:var(--sage);">$184.20</span></div>
+      <div class="m-body">
+        <div class="panel m-card">
+          <div class="m-card-head"><h4>This month</h4></div>
+          <div class="m-cal-grid">
+            <span class="m-cal-dow">S</span><span class="m-cal-dow">M</span><span class="m-cal-dow">T</span><span class="m-cal-dow">W</span><span class="m-cal-dow">T</span><span class="m-cal-dow">F</span><span class="m-cal-dow">S</span>
+            <div class="m-cal-cell"></div><div class="m-cal-cell"></div><div class="m-cal-cell">1</div><div class="m-cal-cell">2</div><div class="m-cal-cell">3</div><div class="m-cal-cell">4<span class="due" style="background:var(--peach);"></span></div><div class="m-cal-cell">5</div>
+            <div class="m-cal-cell">6</div><div class="m-cal-cell">7</div><div class="m-cal-cell">8</div><div class="m-cal-cell">9</div><div class="m-cal-cell">10</div><div class="m-cal-cell">11</div><div class="m-cal-cell">12</div>
+            <div class="m-cal-cell">13</div><div class="m-cal-cell">14</div><div class="m-cal-cell">15</div><div class="m-cal-cell">16</div><div class="m-cal-cell">17</div><div class="m-cal-cell">18</div><div class="m-cal-cell">19</div>
+            <div class="m-cal-cell">20</div><div class="m-cal-cell">21</div><div class="m-cal-cell">22</div><div class="m-cal-cell" style="box-shadow:inset 0 0 0 1px var(--lilac);color:var(--lilac);">23</div><div class="m-cal-cell">24<span class="due" style="background:var(--rose);"></span></div><div class="m-cal-cell">25</div><div class="m-cal-cell">26</div>
+          </div>
+        </div>
+        <div class="panel m-card">
+          <div class="m-card-head"><h4>Recent</h4></div>
+          <div class="m-row"><span class="l">Groceries</span><span>$62.10</span></div>
+          <div class="m-row"><span class="l">Uber</span><span>$18.40</span></div>
+        </div>
+      </div>
+      <div class="m-status-strip"><span class="led sage"></span>Status: Running</div>
+    </div></div>
+  </div>
+
+  <!-- GUITAR -->
+  <div>
+    <div class="phone-label">Guitar</div>
+    <div class="device"><div class="screen brushed">
+      <div class="m-topbar-simple"><span class="m-title">Guitar Lab</span><span style="font-size:11px;color:var(--ink-faint);">12 songs</span></div>
+      <div class="m-body" style="gap:8px;">
+        <div class="m-swipe-wrap panel">
+          <div class="m-swipe-delete">DELETE</div>
+          <div class="m-song-row">
+            <span class="handle">&#9776;</span>
+            <div style="flex:1;min-width:0;">
+              <div class="m-song-title">Wonderwall · Oasis</div>
+              <div class="m-song-rating">★★★★☆</div>
+            </div>
+          </div>
+        </div>
+        <div class="m-swipe-wrap panel">
+          <div class="m-song-row">
+            <span class="handle">&#9776;</span>
+            <div style="flex:1;min-width:0;">
+              <div class="m-song-title">Nothing Else Matters · Metallica</div>
+              <div class="m-song-rating">★★★☆☆</div>
+            </div>
+          </div>
+        </div>
+        <div class="m-swipe-wrap panel">
+          <div class="m-song-row">
+            <span class="handle">&#9776;</span>
+            <div style="flex:1;min-width:0;">
+              <div class="m-song-title">Hotel California · Eagles</div>
+              <div class="m-song-rating">★★★★★</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="m-status-strip"><span class="led sage"></span>Status: Running</div>
+    </div></div>
+  </div>
+
+  <!-- DRAWER -->
+  <div>
+    <div class="phone-label">Drawer</div>
+    <div class="device"><div class="screen brushed">
+      <div class="m-top"><div class="m-clock" style="font-size:20px;opacity:0.4;">21:42</div></div>
+      <div class="m-drawer-overlay">
+        <div class="m-drawer">
+          <div class="m-brand-mark" style="margin-bottom:16px;"><span class="m-brand-chip" style="width:22px;height:22px;"></span><span class="m-brand-name" style="font-size:14px;">NLAB</span></div>
+          <div class="m-drawer-item active"><span class="dot"></span>Home</div>
+          <div class="m-drawer-item"><span class="dot"></span>Workout</div>
+          <div class="m-drawer-item"><span class="dot"></span>Finance</div>
+          <div class="m-drawer-item"><span class="dot"></span>Guitar</div>
+          <div class="m-drawer-item"><span class="dot"></span>Movies</div>
+          <div class="m-drawer-item"><span class="dot"></span>Settings</div>
+        </div>
+        <div class="m-drawer-handle"></div>
+      </div>
+    </div></div>
+  </div>
+
+</div>

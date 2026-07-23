@@ -476,7 +476,7 @@ async function loadDashboard() {
 async function computeWorkoutDashboardStats() {
   const { data: workouts, error } = await supabaseClient
     .from("workouts")
-    .select("id, started_at, workout_sets(reps, weight, station_id, stations(name))")
+    .select("id, started_at, workout_sets(reps, weight, station_id, is_pr_attempt, pr_result, stations(name))")
     .order("started_at", { ascending: true });
 
   if (error) {
@@ -493,6 +493,10 @@ async function computeWorkoutDashboardStats() {
     const perStationMax = {};
     w.workout_sets.forEach((s) => {
       if (s.weight == null) return;
+      // A failed or still-unconfirmed PR attempt shouldn't count toward
+      // PR/gain achievements — only ordinary sets and confirmed-successful
+      // attempts are eligible.
+      if (s.is_pr_attempt && s.pr_result !== "success") return;
       if (!perStationMax[s.station_id] || s.weight > perStationMax[s.station_id].weight) {
         perStationMax[s.station_id] = { weight: s.weight, name: s.stations.name };
       }
@@ -642,12 +646,12 @@ function chartBaseOptions(tooltipFooter) {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: tooltipFooter ? { display: true, labels: { color: "#8b8b9e", boxWidth: 12, font: { size: 11 } } } : { display: false },
+      legend: tooltipFooter ? { display: true, labels: { color: "#9992b3", boxWidth: 12, font: { size: 11 } } } : { display: false },
       tooltip: tooltipFooter ? { callbacks: { footer: (items) => tooltipFooter(items[0].dataIndex) } } : {},
     },
     scales: {
-      x: { grid: { color: "#2a2a38" }, ticks: { color: "#8b8b9e" } },
-      y: { grid: { color: "#2a2a38" }, ticks: { color: "#8b8b9e" } },
+      x: { grid: { color: "#34363f" }, ticks: { color: "#9992b3" } },
+      y: { grid: { color: "#34363f" }, ticks: { color: "#9992b3" } },
     },
   };
 }
@@ -886,8 +890,8 @@ function renderOneStationChart({ stationId, data }) {
         {
           label: "Reps",
           data: reps,
-          borderColor: "#6c63ff",
-          backgroundColor: "rgba(108,99,255,0.15)",
+          borderColor: "#9c86d8",
+          backgroundColor: "rgba(156,134,216,0.15)",
           fill: true,
           tension: 0.3,
           pointRadius: dense && !isZoomed ? 0 : 4,
@@ -898,8 +902,8 @@ function renderOneStationChart({ stationId, data }) {
         {
           label: "Weight (kg)",
           data: data.sessions.map((s) => s.weight),
-          borderColor: "#6c63ff",
-          backgroundColor: "rgba(108,99,255,0.15)",
+          borderColor: "#9c86d8",
+          backgroundColor: "rgba(156,134,216,0.15)",
           fill: true,
           tension: 0.3,
           // Overview mode on a dense history hides point markers so the
@@ -911,7 +915,7 @@ function renderOneStationChart({ stationId, data }) {
         {
           label: "Est. 1RM (kg)",
           data: data.sessions.map((s) => Math.round(estimate1RM(s.weight, s.reps) * 10) / 10),
-          borderColor: "#f5c542",
+          borderColor: "#e0ad74",
           backgroundColor: "transparent",
           borderDash: [4, 3],
           fill: false,

@@ -30,7 +30,7 @@ function daysUntilDue(dateStr) {
   return Math.round((due - today) / 86400000);
 }
 
-const FINANCE_PALETTE = ["#6c63ff", "#f5c542", "#4ade80", "#f87171", "#38bdf8", "#fb923c", "#a78bfa", "#34d399"];
+const FINANCE_PALETTE = ["#9c86d8", "#f0c9a0", "#7fc7a8", "#d98c94", "#8ec6e6", "#e0a778", "#c9a0d4", "#7fd4c1"];
 function nextCategoryColor() {
   return FINANCE_PALETTE[financeCategoriesCache.length % FINANCE_PALETTE.length];
 }
@@ -87,8 +87,8 @@ function formatBalance(n) {
 }
 
 function transactionKindBadgeHtml(kind) {
-  if (kind === "income") return `<span class="category-badge" style="background:#4ade8022;color:#4ade80;border-color:#4ade8055;">Income</span>`;
-  return `<span class="category-badge" style="background:#f5c54222;color:#f5c542;border-color:#f5c54255;">Bal. Adjustment</span>`;
+  if (kind === "income") return `<span class="category-badge" style="background:#7fc7a822;color:#7fc7a8;border-color:#7fc7a855;">Income</span>`;
+  return `<span class="category-badge" style="background:#f0c9a022;color:#f0c9a0;border-color:#f0c9a055;">Bal. Adjustment</span>`;
 }
 
 /** Merges expenses + balance-ledger entries into one normalized,
@@ -133,9 +133,9 @@ function categoryName(id) {
 }
 
 function categoryColor(id) {
-  if (!id) return "#5c5c6e";
+  if (!id) return "#4a4c58";
   const c = financeCategoriesCache.find((cat) => cat.id === id);
-  return (c && c.color) || "#6c63ff";
+  return (c && c.color) || "#9c86d8";
 }
 
 /** Colored category pill, e.g. "Food" in its category's color — same
@@ -819,18 +819,18 @@ function renderFinanceCategoryChart(expenses) {
   if (entries.length === 0) return;
 
   const labels = entries.map(([id]) => (id === "none" ? "Uncategorized" : categoryName(id)));
-  const colors = entries.map(([id]) => (id === "none" ? "#5c5c6e" : financeCategoriesCache.find((c) => c.id === id)?.color || "#6c63ff"));
+  const colors = entries.map(([id]) => (id === "none" ? "#4a4c58" : financeCategoriesCache.find((c) => c.id === id)?.color || "#9c86d8"));
 
   financeCharts.category = new Chart(ctx.getContext("2d"), {
     type: "doughnut",
     data: {
       labels,
-      datasets: [{ data: entries.map(([, v]) => Math.round(v * 100) / 100), backgroundColor: colors, borderColor: "#1a1a24", borderWidth: 2 }],
+      datasets: [{ data: entries.map(([, v]) => Math.round(v * 100) / 100), backgroundColor: colors, borderColor: "#1e2027", borderWidth: 2 }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: "bottom", labels: { color: "#8b8b9e", boxWidth: 12, font: { size: 11 } } } },
+      plugins: { legend: { position: "bottom", labels: { color: "#9992b3", boxWidth: 12, font: { size: 11 } } } },
     },
   });
 }
@@ -859,8 +859,8 @@ function renderFinanceTrendChart(allExpenses) {
       datasets: [{
         label: "Spend",
         data: months.map((m) => Math.round(m.total * 100) / 100),
-        borderColor: "#f5c542",
-        backgroundColor: "rgba(245,197,66,0.15)",
+        borderColor: "#f0c9a0",
+        backgroundColor: "rgba(240,201,160,0.15)",
         fill: true,
         tension: 0.3,
         pointRadius: 4,
@@ -964,11 +964,11 @@ function openExpenseModal(expenseId) {
       note: document.getElementById("expense-note").value.trim() || null,
     };
 
-    let error;
+    let error, queued;
     if (existing) {
-      ({ error } = await supabaseClient.from("finance_expenses").update(payload).eq("id", existing.id));
+      ({ error, queued } = await writeWithQueue("finance_expenses", "update", payload, { match: { id: existing.id } }));
     } else {
-      ({ error } = await supabaseClient.from("finance_expenses").insert(payload));
+      ({ error, queued } = await writeWithQueue("finance_expenses", "upsert", { id: crypto.randomUUID(), ...payload }));
     }
 
     if (error) {
@@ -976,15 +976,18 @@ function openExpenseModal(expenseId) {
       return;
     }
     closeModal();
-    loadFinanceExpenses();
+    // Queued (offline/outage): the row isn't on the server yet, so
+    // re-fetching now just wouldn't show it — it'll appear once the write
+    // queue syncs (see the pending-sync badge) rather than being lost.
+    if (!queued) loadFinanceExpenses();
   });
 }
 
 async function deleteExpense(id) {
   if (!(await uiConfirm("Delete this expense?"))) return;
-  const { error } = await supabaseClient.from("finance_expenses").delete().eq("id", id);
+  const { error, queued } = await writeWithQueue("finance_expenses", "delete", null, { match: { id } });
   if (error) return uiAlert("Failed to delete: " + error.message);
-  loadFinanceExpenses();
+  if (!queued) loadFinanceExpenses();
 }
 
 /* ============================================
@@ -1301,7 +1304,7 @@ function renderCategoryManagerList() {
       (c) => `
     <div class="card-row">
       <div style="display:flex;align-items:center;gap:10px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:${c.color || "#6c63ff"};display:inline-block;"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:${c.color || "#9c86d8"};display:inline-block;"></span>
         <div class="title">${escapeHtml(c.name)}</div>
       </div>
       <button class="icon-btn danger" onclick="deleteCategoryDesktop('${c.id}')">Delete</button>

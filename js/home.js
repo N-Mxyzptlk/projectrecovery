@@ -28,24 +28,33 @@ async function loadTodos() {
 async function addTodo(text) {
   const trimmed = text.trim();
   if (!trimmed) return;
-  const { error } = await supabaseClient.from("todos").insert({ text: trimmed });
+  const localId = crypto.randomUUID();
+  const { error, queued } = await writeWithQueue("todos", "upsert", { id: localId, text: trimmed, done: false });
   if (error) {
     await uiAlert("Failed to add task: " + error.message);
     return;
   }
-  await loadTodos();
+  // Queued (offline/outage): re-fetching now would just show the list
+  // without this task, since it hasn't reached Supabase yet — add it to
+  // the local cache directly instead so it doesn't look like it vanished.
+  if (queued) todosCache.push({ id: localId, text: trimmed, done: false, created_at: new Date().toISOString() });
+  else await loadTodos();
 }
 
 async function toggleTodo(id) {
   const todo = todosCache.find((t) => t.id === id);
   if (!todo) return;
-  const { error } = await supabaseClient.from("todos").update({ done: !todo.done }).eq("id", id);
-  if (!error) await loadTodos();
+  const { error, queued } = await writeWithQueue("todos", "update", { done: !todo.done }, { match: { id } });
+  if (error) return;
+  if (queued) todo.done = !todo.done;
+  else await loadTodos();
 }
 
 async function deleteTodo(id) {
-  const { error } = await supabaseClient.from("todos").delete().eq("id", id);
-  if (!error) await loadTodos();
+  const { error, queued } = await writeWithQueue("todos", "delete", null, { match: { id } });
+  if (error) return;
+  if (queued) todosCache = todosCache.filter((t) => t.id !== id);
+  else await loadTodos();
 }
 
 function renderTodoListHtml(escapeFn) {
@@ -618,7 +627,8 @@ async function submitQuickExpenseLog() {
   btn.textContent = "...";
 
   beginMutation();
-  const { error } = await supabaseClient.from("finance_expenses").insert({
+  const { error, queued } = await writeWithQueue("finance_expenses", "upsert", {
+    id: crypto.randomUUID(),
     amount,
     category_id: categoryId,
     occurred_at: new Date().toISOString(),
@@ -640,7 +650,16 @@ async function submitQuickExpenseLog() {
     btn.textContent = "Log";
   }, 1200);
 
-  renderHomeBalanceReminder(await loadFinanceBalanceSummary());
+  // Queued (offline/outage): the server hasn't recorded this yet, so
+  // re-fetching the balance now would just show the stale pre-expense
+  // number — adjust what's on screen locally instead.
+  if (queued) {
+    const el = document.getElementById("m-home-balance");
+    const current = parseFloat((el?.textContent || "").replace(/[^0-9.-]/g, "")) || 0;
+    renderHomeBalanceReminder(current - amount);
+  } else {
+    renderHomeBalanceReminder(await loadFinanceBalanceSummary());
+  }
 }
 
 function renderMobileHomeTodoPanel() {

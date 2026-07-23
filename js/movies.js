@@ -18,7 +18,7 @@ const MOVIE_PLATFORM_PRESETS = Object.keys(MOVIE_PLATFORM_COLORS);
 
 function moviePlatformBadgeStyle(name) {
   if (name === "Apple TV+") return "background:#000;color:#fff;border-color:#ffffff33;";
-  const color = MOVIE_PLATFORM_COLORS[name] || "#6c63ff"; // custom/non-preset platforms fall back to the app accent color
+  const color = MOVIE_PLATFORM_COLORS[name] || "#9c86d8"; // custom/non-preset platforms fall back to the app accent color
   return `background:${color}22;color:${color};border-color:${color}55;`;
 }
 

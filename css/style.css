@@ -2,37 +2,47 @@
    Design tokens — Sept's Toolkit system
    ============================================ */
 :root {
-  --bg: #0f0f14;
-  --surface: #1a1a24;
-  --surface-hover: #22222e;
-  --surface-raised: #24242f;
-  --border: #2a2a38;
-  --accent: #6c63ff;
-  --accent-dim: rgba(108, 99, 255, 0.15);
-  --accent-glow: rgba(108, 99, 255, 0.35);
-  --gold: #f5c542;
-  --gold-dim: rgba(245, 197, 66, 0.15);
+  /* "Anodized instrument panel" — brushed-metal grounds tinted in soft
+     pastels instead of gunmetal grey, tight machined corners instead of
+     soft bubbly ones. See design-mockup.html for the reference screens. */
+  --bg: #16171d;
+  --surface: #1e2027;
+  --surface-hover: #262932;
+  --surface-raised: #2a2d37;
+  --border: #34363f;
+  --accent: #9c86d8;
+  --accent-dim: rgba(156, 134, 216, 0.15);
+  --accent-glow: rgba(156, 134, 216, 0.35);
+  --gold: #f0c9a0;
+  --gold-dim: rgba(240, 201, 160, 0.15);
   /* Softer/less saturated than --gold — --gold is meant to read as a
-     status/warning color (due-soon badges, dots); using that same bright,
-     saturated yellow for plain money amounts you're reading at a glance
-     made numbers harder to parse, not easier. */
-  --gold-soft: #d9b158;
-  --energy: #ff5e3a;
-  --text: #ececf5;
-  /* --text-muted/--text-faint are lavender tints of --accent (#6c63ff),
-     not neutral grey — lightening flat grey (R≈G≈B) last time fixed
-     contrast but not the actual complaint: it still reads as washed-out
-     "disabled" grey, not a deliberate color. These are desaturated toward
-     the same hue as the accent purple so secondary/tertiary text feels
-     like part of the theme rather than a default. */
-  --text-muted: #b6aeea; /* ~5.6:1 on --surface */
-  --text-faint: #9d94ca; /* ~4.5:1 on --surface */
-  --success: #4ade80;
-  --danger: #f87171;
-  --warning: #fbbf24;
-  --radius: 8px;
+     status/warning color (due-soon badges, dots); using that same bright
+     peach for plain money amounts you're reading at a glance made numbers
+     harder to parse, not easier. */
+  --gold-soft: #d9a876;
+  --energy: #e6a9b0;
+  --text: #eae7f2;
+  /* --text-muted/--text-faint are lilac tints of --accent, not neutral
+     grey — lightening flat grey (R≈G≈B) last time fixed contrast but not
+     the actual complaint: it still reads as washed-out "disabled" grey,
+     not a deliberate color. These are desaturated toward the same hue as
+     the accent lilac so secondary/tertiary text feels like part of the
+     theme rather than a default. */
+  --text-muted: #b3a9cc; /* ~5.6:1 on --surface */
+  --text-faint: #9992b3; /* ~4.5:1 on --surface */
+  --success: #7fc7a8;
+  --danger: #d98c94;
+  --warning: #e0ad74;
+  --radius: 5px;
   --font-mono: Consolas, "Courier New", monospace;
   --font-display: "Bebas Neue", Consolas, sans-serif;
+
+  /* Brushed-metal panel texture — thin diagonal highlight/shadow bands,
+     the same trick that reads as brushed aluminum on real hardware.
+     Applied via .metal-brushed (see body background below and the
+     component that opts in with this class). */
+  --edge-hi: rgba(255, 255, 255, 0.05);
+  --edge-lo: rgba(0, 0, 0, 0.4);
 }
 
 * {
@@ -81,13 +91,16 @@ html, body {
   margin: 0;
   padding: 0;
   background: var(--bg);
-  /* Subtle diagonal texture — a nod to gym flooring/plates rather than a flat panel */
+  /* Brushed-metal texture — thin diagonal highlight/shadow banding, the
+     same trick that reads as brushed aluminum on real hardware. */
   background-image: repeating-linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.012) 0px,
-    rgba(255, 255, 255, 0.012) 2px,
-    transparent 2px,
-    transparent 14px
+    115deg,
+    var(--edge-hi) 0px,
+    transparent 1px,
+    transparent 3px,
+    var(--edge-lo) 4px,
+    transparent 5px,
+    transparent 11px
   );
   color: var(--text);
   font-family: var(--font-mono);
@@ -158,6 +171,30 @@ input[type="number"] {
   box-shadow: 0 0 6px var(--danger);
 }
 
+.status-dot.status-orange {
+  background: var(--gold);
+  box-shadow: 0 0 6px var(--gold);
+}
+
+/* Offline write queue — only present in the DOM while something is
+   actually pending sync (see js/writequeue.js). */
+#write-queue-badge {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 500;
+  background: var(--surface-raised);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
 .deployed-row {
   font-size: 11px;
   color: var(--text-faint);
@@ -180,7 +217,7 @@ input[type="number"] {
 .inactivity-modal {
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 6px;
   padding: 32px 28px;
   width: 320px;
   max-width: 100%;
@@ -265,7 +302,7 @@ input[type="number"] {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
@@ -320,7 +357,7 @@ input[type="number"] {
   gap: 8px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
@@ -358,7 +395,7 @@ input[type="number"] {
   z-index: 600;
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
 }
 
@@ -376,7 +413,7 @@ input[type="number"] {
   z-index: 700;
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
   max-height: 220px;
   overflow-y: auto;
@@ -514,7 +551,7 @@ input[type="number"] {
 
 .btn-primary {
   width: 100%;
-  background: linear-gradient(135deg, var(--accent), #574fd6);
+  background: linear-gradient(135deg, var(--accent), #7a63c2);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -523,17 +560,17 @@ input[type="number"] {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  box-shadow: 0 4px 0 #4b45b0, 0 4px 14px var(--accent-glow);
+  box-shadow: 0 4px 0 #5f4a94, 0 4px 14px var(--accent-glow);
   transition: box-shadow 0.1s ease, transform 0.1s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 4px 0 #4b45b0, 0 4px 20px var(--accent-glow);
+  box-shadow: 0 4px 0 #5f4a94, 0 4px 20px var(--accent-glow);
 }
 
 .btn-primary:active:not(:disabled) {
   transform: translateY(2px);
-  box-shadow: 0 2px 0 #4b45b0, 0 2px 10px var(--accent-glow);
+  box-shadow: 0 2px 0 #5f4a94, 0 2px 10px var(--accent-glow);
 }
 
 .btn-primary:disabled {
@@ -748,7 +785,7 @@ input[type="number"] {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 10px 32px 10px 12px;
   font-size: 14px;
@@ -903,7 +940,7 @@ input[type="search"]::-webkit-search-decoration {
   width: 260px;
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 10px 12px;
   font-size: 12px;
   line-height: 1.5;
@@ -934,7 +971,7 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .btn-accent {
-  background: linear-gradient(135deg, var(--accent), #574fd6);
+  background: linear-gradient(135deg, var(--accent), #7a63c2);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -943,17 +980,17 @@ input[type="search"]::-webkit-search-decoration {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  box-shadow: 0 3px 0 #4b45b0;
+  box-shadow: 0 3px 0 #5f4a94;
   transition: box-shadow 0.1s ease, transform 0.1s ease;
 }
 
 .btn-accent:hover {
-  box-shadow: 0 3px 0 #4b45b0, 0 3px 16px var(--accent-glow);
+  box-shadow: 0 3px 0 #5f4a94, 0 3px 16px var(--accent-glow);
 }
 
 .btn-accent:active {
   transform: translateY(2px);
-  box-shadow: 0 1px 0 #4b45b0;
+  box-shadow: 0 1px 0 #5f4a94;
 }
 
 .btn-ghost {
@@ -978,14 +1015,14 @@ input[type="search"]::-webkit-search-decoration {
 
 .btn-clear-all {
   color: var(--danger);
-  border-color: rgba(248, 113, 113, 0.35);
+  border-color: rgba(217, 140, 148, 0.35);
   font-size: 12px;
 }
 
 .btn-clear-all:hover {
   color: var(--danger);
   border-color: var(--danger);
-  background: rgba(248, 113, 113, 0.08);
+  background: rgba(217, 140, 148, 0.08);
 }
 
 /* ============================================
@@ -1048,9 +1085,9 @@ input[type="search"]::-webkit-search-decoration {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
-  background: rgba(74, 222, 128, 0.12);
+  background: rgba(127, 199, 168, 0.12);
   color: var(--success);
-  border: 1px solid rgba(74, 222, 128, 0.3);
+  border: 1px solid rgba(127, 199, 168, 0.3);
 }
 
 .category-badge {
@@ -1076,7 +1113,7 @@ input[type="search"]::-webkit-search-decoration {
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
-  border-radius: 12px;
+  border-radius: 5px;
   padding: 18px 16px;
   text-align: left;
   transition: border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
@@ -1272,7 +1309,7 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .payment-status-badge.status-upcoming-onetime {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(127, 199, 168, 0.15);
   color: var(--success);
 }
 
@@ -1282,17 +1319,17 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .payment-status-badge.status-overdue {
-  background: rgba(248, 113, 113, 0.15);
+  background: rgba(217, 140, 148, 0.15);
   color: var(--danger);
 }
 
 .payment-status-badge.status-paid {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(127, 199, 168, 0.15);
   color: var(--success);
 }
 
 .payment-status-badge.status-cancelled {
-  background: rgba(139, 139, 158, 0.15);
+  background: rgba(153, 146, 179, 0.15);
   color: var(--text-muted);
 }
 
@@ -1365,7 +1402,7 @@ input[type="search"]::-webkit-search-decoration {
   background: var(--surface-raised);
   border: 1px solid var(--accent);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   min-width: 200px;
@@ -1446,11 +1483,11 @@ input[type="search"]::-webkit-search-decoration {
    purely upcoming keeps no special cell tint — the dot colors alone (by
    kind) are enough at that distance. */
 .fin-cal-cell.cell-overdue {
-  background: rgba(248, 113, 113, 0.12);
+  background: rgba(217, 140, 148, 0.12);
 }
 
 .fin-cal-cell.cell-overdue:hover {
-  background: rgba(248, 113, 113, 0.22);
+  background: rgba(217, 140, 148, 0.22);
 }
 
 .fin-cal-cell.cell-danger-close {
@@ -1487,13 +1524,13 @@ input[type="search"]::-webkit-search-decoration {
 /* Danger-close (due soon): a pulsing ring around the dot rather than a
    fourth base color, layered on top of whatever kind-color it already has. */
 .fin-cal-dot.dot-danger-close {
-  box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.5);
+  box-shadow: 0 0 0 2px rgba(240, 201, 160, 0.5);
   animation: fin-cal-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes fin-cal-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(245, 197, 66, 0.5); }
-  50% { box-shadow: 0 0 0 4px rgba(245, 197, 66, 0.15); }
+  0%, 100% { box-shadow: 0 0 0 2px rgba(240, 201, 160, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(240, 201, 160, 0.15); }
 }
 
 .fin-cal-dot-more {
@@ -1514,7 +1551,7 @@ input[type="search"]::-webkit-search-decoration {
   max-width: 420px;
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 12px 16px;
   display: flex;
   align-items: center;
@@ -1628,12 +1665,12 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .trend-badge.up {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(127, 199, 168, 0.15);
   color: var(--success);
 }
 
 .trend-badge.down {
-  background: rgba(248, 113, 113, 0.15);
+  background: rgba(217, 140, 148, 0.15);
   color: var(--danger);
 }
 
@@ -1643,7 +1680,7 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .trend-badge.abandoned {
-  background: rgba(139, 139, 158, 0.15);
+  background: rgba(153, 146, 179, 0.15);
   color: var(--text-muted);
 }
 
@@ -1711,7 +1748,7 @@ input[type="search"]::-webkit-search-decoration {
   gap: 10px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 10px 12px;
 }
 
@@ -1900,8 +1937,8 @@ input[type="search"]::-webkit-search-decoration {
   inset: 0;
   background-image: repeating-linear-gradient(
     90deg,
-    rgba(108, 99, 255, 0.05) 0px,
-    rgba(108, 99, 255, 0.05) 1px,
+    rgba(156, 134, 216, 0.05) 0px,
+    rgba(156, 134, 216, 0.05) 1px,
     transparent 1px,
     transparent 40px
   );
@@ -2128,7 +2165,7 @@ input[type="search"]::-webkit-search-decoration {
   min-width: 0;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 9px 12px;
   font-size: 13px;
@@ -2216,7 +2253,7 @@ input[type="search"]::-webkit-search-decoration {
 
 .home-todo-item.done .home-todo-check {
   border-color: var(--success);
-  background: rgba(74, 222, 128, 0.12);
+  background: rgba(127, 199, 168, 0.12);
 }
 
 .home-todo-text {
@@ -2275,11 +2312,11 @@ input[type="search"]::-webkit-search-decoration {
 
 .home-payment-item.status-income:hover,
 .home-payment-item.status-income:active {
-  background: rgba(74, 222, 128, 0.06);
+  background: rgba(127, 199, 168, 0.06);
 }
 
 .payment-status-badge.status-income {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(127, 199, 168, 0.15);
   color: var(--success);
 }
 
@@ -2322,7 +2359,7 @@ input[type="search"]::-webkit-search-decoration {
   text-align: left;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 14px 16px;
   color: var(--text);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -2376,7 +2413,7 @@ input[type="search"]::-webkit-search-decoration {
   min-width: 0;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
@@ -2387,7 +2424,7 @@ input[type="search"]::-webkit-search-decoration {
   min-width: 0;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 10px 26px 10px 12px;
   font-size: 14px;
@@ -2442,7 +2479,7 @@ input[type="search"]::-webkit-search-decoration {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 8px 10px;
   font-size: 12px;
@@ -2461,7 +2498,7 @@ input[type="search"]::-webkit-search-decoration {
   margin-top: 4px;
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   overflow: hidden;
   z-index: 20;
 }
@@ -2522,7 +2559,7 @@ input[type="search"]::-webkit-search-decoration {
   gap: 2px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 8px 10px;
 }
 
@@ -2540,13 +2577,13 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .weather-rain-warning {
-  background: rgba(245, 197, 66, 0.15);
+  background: rgba(240, 201, 160, 0.15);
   border: 1px solid var(--gold);
   color: var(--gold);
   font-size: 12px;
   font-weight: 600;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 5px;
   margin-bottom: 8px;
 }
 
@@ -2566,7 +2603,7 @@ input[type="search"]::-webkit-search-decoration {
   }
   50% {
     border-color: var(--gold);
-    box-shadow: 0 0 18px rgba(245, 197, 66, 0.5);
+    box-shadow: 0 0 18px rgba(240, 201, 160, 0.5);
   }
 }
 
@@ -2603,31 +2640,31 @@ input[type="search"]::-webkit-search-decoration {
 
 .icon-btn.danger {
   color: var(--danger);
-  border-color: rgba(248, 113, 113, 0.3);
+  border-color: rgba(217, 140, 148, 0.3);
 }
 
 .icon-btn.danger:hover {
   color: var(--danger);
   border-color: var(--danger);
-  background: rgba(248, 113, 113, 0.08);
+  background: rgba(217, 140, 148, 0.08);
 }
 
 .icon-btn.action-paid {
   color: var(--success);
-  border-color: rgba(74, 222, 128, 0.35);
+  border-color: rgba(127, 199, 168, 0.35);
 }
 .icon-btn.action-paid:hover {
   border-color: var(--success);
-  background: rgba(74, 222, 128, 0.08);
+  background: rgba(127, 199, 168, 0.08);
 }
 
 .icon-btn.action-overdue {
   color: var(--danger);
-  border-color: rgba(248, 113, 113, 0.35);
+  border-color: rgba(217, 140, 148, 0.35);
 }
 .icon-btn.action-overdue:hover {
   border-color: var(--danger);
-  background: rgba(248, 113, 113, 0.08);
+  background: rgba(217, 140, 148, 0.08);
 }
 
 .icon-btn.action-cancel {
@@ -2639,19 +2676,19 @@ input[type="search"]::-webkit-search-decoration {
 .icon-btn.action-cancel:hover {
   color: var(--text);
   border-color: var(--text-muted);
-  background: rgba(139, 139, 158, 0.1);
+  background: rgba(153, 146, 179, 0.1);
 }
 
 .icon-btn.guitar-liked-active {
-  color: #f87171;
-  border-color: rgba(248, 113, 113, 0.4);
-  background: rgba(248, 113, 113, 0.1);
+  color: #d98c94;
+  border-color: rgba(217, 140, 148, 0.4);
+  background: rgba(217, 140, 148, 0.1);
 }
 
 .icon-btn.guitar-want-active {
   color: var(--gold);
-  border-color: rgba(245, 197, 66, 0.4);
-  background: rgba(245, 197, 66, 0.1);
+  border-color: rgba(240, 201, 160, 0.4);
+  background: rgba(240, 201, 160, 0.1);
 }
 
 .icon-btn.guitar-setlist-active {
@@ -2717,7 +2754,7 @@ input[type="search"]::-webkit-search-decoration {
   gap: 8px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
@@ -2732,7 +2769,7 @@ input[type="search"]::-webkit-search-decoration {
   margin-top: 8px;
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 8px;
 }
 
@@ -2791,7 +2828,7 @@ input[type="search"]::-webkit-search-decoration {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 8px 10px;
   font-size: 13px;
@@ -2862,7 +2899,7 @@ input[type="search"]::-webkit-search-decoration {
   gap: 10px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 6px 10px;
 }
 
@@ -2901,7 +2938,7 @@ input[type="search"]::-webkit-search-decoration {
   z-index: 20;
   background: var(--surface-raised);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
-  border-radius: 8px;
+  border-radius: 5px;
 }
 
 .platform-order-remove {
@@ -2925,7 +2962,7 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .movie-type-badge.type-tv {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(127, 199, 168, 0.15);
   color: var(--success);
 }
 
@@ -2966,7 +3003,7 @@ input[type="search"]::-webkit-search-decoration {
 .confirm-modal {
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 6px;
   padding: 26px 24px;
   width: 360px;
   max-width: 100%;
@@ -2984,7 +3021,7 @@ input[type="search"]::-webkit-search-decoration {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
@@ -3126,12 +3163,12 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 .wd-pr-tag.success {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(127, 199, 168, 0.15);
   color: var(--success);
 }
 
 .wd-pr-tag.failure {
-  background: rgba(248, 113, 113, 0.15);
+  background: rgba(217, 140, 148, 0.15);
   color: var(--danger);
 }
 

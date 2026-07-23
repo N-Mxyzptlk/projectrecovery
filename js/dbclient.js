@@ -224,9 +224,16 @@ function endMutation() {
 
 function refreshStatusLights() {
   let status, label;
+  const queuedCount = typeof loadWriteQueue === "function" ? loadWriteQueue().length : 0;
   if (!lastHealthOk) {
     status = "red";
     label = "Status: Systems Down";
+  } else if (queuedCount > 0) {
+    // Distinct from "Logging" (mutationInFlight, transient) — this means a
+    // write already failed once for a connectivity reason and is sitting
+    // in the local retry queue, not lost, just not synced yet.
+    status = "orange";
+    label = `Status: ${queuedCount} change${queuedCount === 1 ? "" : "s"} pending sync`;
   } else if (mutationInFlight > 0) {
     status = "yellow";
     label = "Status: Logging";

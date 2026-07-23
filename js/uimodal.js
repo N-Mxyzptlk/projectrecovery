@@ -412,7 +412,16 @@ function renderNavModuleEditor(containerId, onSaved) {
     (e) => {
       if (!pressedEl) return;
       const touch = e.touches[0];
-      if (Math.abs(touch.clientX - startX) > MOVE_THRESHOLD || Math.abs(touch.clientY - startY) > MOVE_THRESHOLD) {
+      const dx = Math.abs(touch.clientX - startX);
+      const dy = Math.abs(touch.clientY - startY);
+      // Only a vertical scroll should clear the pressed state — a
+      // horizontal-dominant move is a swipe gesture (drawer, calendar,
+      // card actions), and forcing pointer-events:none mid-swipe can make
+      // the browser synthesize a pointercancel that aborts whatever drag
+      // recognizer is tracking that same touch (e.g. the edge-swipe
+      // drawer, if the touch started on a pressable row like a Home
+      // payment/todo item).
+      if (dy > MOVE_THRESHOLD && dy > dx) {
         cancelPressedState();
       }
     },

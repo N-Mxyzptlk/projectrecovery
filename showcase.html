@@ -1,0 +1,620 @@
+<meta charset="UTF-8" />
+<title>NLAB Environment — Engineering Notes</title>
+<style>
+  :root {
+    --ground: #111219;
+    --panel: #1b1d25;
+    --panel-2: #24262f;
+    --panel-3: #2e313c;
+    --edge-hi: rgba(255, 255, 255, 0.07);
+    --edge-lo: rgba(0, 0, 0, 0.5);
+    --ink: #eee9f7;
+    --ink-dim: #9c96ac;
+    --ink-faint: #6c6779;
+
+    --lilac: #c9bcee;
+    --lilac-strong: #9c86d8;
+    --lilac-ink: #16171c;
+    --sage: #a7d9c3;
+    --sage-strong: #7fc7a8;
+    --peach: #f0c9a0;
+    --rose: #e6a9b0;
+
+    --font-display: "Arial Narrow", "Roboto Condensed", "Helvetica Neue Condensed", sans-serif;
+    --font-mono: Consolas, "SF Mono", "Cascadia Mono", "Courier New", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--lilac); color: var(--lilac-ink); }
+  a { color: var(--lilac); }
+
+  .brushed {
+    background-color: var(--panel);
+    background-image: repeating-linear-gradient(115deg, var(--edge-hi) 0px, transparent 1px, transparent 3px, var(--edge-lo) 4px, transparent 5px, transparent 11px);
+  }
+  .panel {
+    background-color: var(--panel-2);
+    border-radius: 6px;
+    border-top: 1px solid var(--edge-hi);
+    border-bottom: 1px solid var(--edge-lo);
+    box-shadow: 0 1px 0 var(--edge-hi) inset, 0 10px 22px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ---------- hero ---------- */
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding: 90px 28px 70px;
+    border-bottom: 1px solid var(--edge-lo);
+  }
+  .hero::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(115deg, var(--edge-hi) 0px, transparent 1px, transparent 3px, transparent 12px);
+    pointer-events: none;
+  }
+  .hero-inner { max-width: 880px; margin: 0 auto; position: relative; }
+  .hero .kicker {
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 11px;
+    color: var(--lilac);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .hero .kicker .led { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); box-shadow: 0 0 6px var(--sage); }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(34px, 5vw, 52px);
+    letter-spacing: 0.01em;
+    margin: 16px 0 18px;
+    text-wrap: balance;
+    max-width: 16ch;
+  }
+  .hero p {
+    color: var(--ink-dim);
+    font-size: 14px;
+    line-height: 1.75;
+    max-width: 62ch;
+    margin: 0 0 26px;
+  }
+  .hero-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+  .hero-stat {
+    background: var(--panel-2);
+    border: 1px solid var(--edge-lo);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 11.5px;
+    color: var(--ink-dim);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .hero-stat b { color: var(--ink); font-family: var(--font-display); letter-spacing: 0.02em; }
+
+  /* ---------- switch (tab toggle) ---------- */
+  .switch-row { display: flex; justify-content: center; padding: 46px 20px 10px; }
+  .switch {
+    display: inline-flex;
+    background: var(--panel-2);
+    border: 1px solid var(--edge-lo);
+    border-radius: 999px;
+    padding: 4px;
+    gap: 4px;
+    box-shadow: 0 1px 0 var(--edge-hi) inset;
+  }
+  .switch button {
+    border: none;
+    background: transparent;
+    color: var(--ink-dim);
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 12px;
+    padding: 10px 26px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+  .switch button.active {
+    background: linear-gradient(150deg, var(--lilac), var(--lilac-strong));
+    color: var(--lilac-ink);
+    box-shadow: 0 4px 14px rgba(156, 134, 216, 0.3);
+  }
+
+  .plane { display: none; max-width: 920px; margin: 0 auto; padding: 40px 24px 100px; }
+  .plane.active { display: block; }
+
+  /* ---------- feature entries (spec-sheet rows) ---------- */
+  .entry {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 22px;
+    padding: 30px 0;
+    border-top: 1px solid var(--edge-lo);
+  }
+  .entry:first-child { border-top: none; padding-top: 6px; }
+  .entry .idx {
+    font-family: var(--font-display);
+    font-size: 28px;
+    color: var(--ink-faint);
+    line-height: 1;
+    padding-top: 4px;
+  }
+  .entry h3 {
+    font-family: var(--font-display);
+    font-size: 19px;
+    letter-spacing: 0.01em;
+    margin: 0 0 4px;
+  }
+  .entry .role {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--lilac);
+    margin-bottom: 10px;
+    display: block;
+  }
+  .entry p {
+    color: var(--ink-dim);
+    font-size: 13px;
+    line-height: 1.7;
+    max-width: 62ch;
+    margin: 0 0 16px;
+  }
+  .entry p b { color: var(--ink); font-weight: 700; }
+
+  .code {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+    background: var(--ground);
+    border: 1px solid var(--edge-lo);
+    border-radius: 5px;
+    padding: 13px 15px;
+    overflow-x: auto;
+    color: var(--ink-dim);
+    white-space: pre;
+  }
+  .code .kw { color: var(--lilac); }
+  .code .cm { color: var(--ink-faint); font-style: italic; }
+  .code .st { color: var(--sage); }
+
+  .demo {
+    background: var(--ground);
+    border: 1px solid var(--edge-lo);
+    border-radius: 6px;
+    padding: 18px;
+    margin-top: 4px;
+  }
+  .demo .demo-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--ink-faint); margin-bottom: 12px;
+  }
+
+  /* live modal demo */
+  .try-btn {
+    border: none; border-radius: 4px; padding: 10px 18px;
+    font-family: var(--font-display); font-weight: 700; letter-spacing: 0.04em; font-size: 12px;
+    color: var(--lilac-ink); background: linear-gradient(150deg, var(--lilac), var(--lilac-strong));
+    cursor: pointer;
+  }
+  .try-result { margin-top: 10px; font-size: 11.5px; color: var(--ink-faint); min-height: 16px; }
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(10, 10, 14, 0.6);
+    display: flex; align-items: center; justify-content: center; z-index: 999;
+  }
+  .modal-box {
+    width: 320px; padding: 22px 22px 18px;
+    background: var(--panel-2); border-radius: 7px;
+    border-top: 1px solid var(--edge-hi); box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+  .modal-box .m-title { font-family: var(--font-display); font-size: 15px; margin-bottom: 8px; }
+  .modal-box .m-body { font-size: 12.5px; color: var(--ink-dim); line-height: 1.6; margin-bottom: 18px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-actions button {
+    border: none; border-radius: 4px; padding: 8px 16px; font-family: var(--font-mono); font-size: 12px; cursor: pointer;
+  }
+  .modal-actions .ghost { background: var(--panel-3); color: var(--ink-dim); }
+  .modal-actions .go { background: linear-gradient(150deg, var(--rose), #d98c94); color: var(--lilac-ink); font-weight: 700; }
+
+  /* live gesture demo — mini phone */
+  .gdemo { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .gphone { width: 220px; background: var(--panel-2); border-radius: 16px; padding: 10px; border: 1px solid var(--edge-lo); flex-shrink: 0; }
+  .gscreen { background: var(--ground); border-radius: 10px; padding: 10px; touch-action: pan-y; }
+  .grow-wrap { position: relative; border-radius: 5px; overflow: hidden; margin-bottom: 6px; }
+  .grow-delete {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 56px;
+    background: var(--rose); color: var(--lilac-ink); display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.04em;
+  }
+  .grow {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel-2); border-radius: 5px; padding: 10px;
+    font-size: 11px; position: relative; touch-action: pan-y;
+    user-select: none;
+  }
+  .grow .handle { color: var(--ink-faint); cursor: grab; font-size: 12px; touch-action: none; }
+  .grow.dragging { box-shadow: 0 10px 20px rgba(0,0,0,0.4); z-index: 5; }
+  .gdemo-note { flex: 1; min-width: 220px; font-size: 12px; color: var(--ink-faint); line-height: 1.7; padding-top: 4px; }
+  .gdemo-note b { color: var(--ink-dim); }
+
+  /* ---------- footer ---------- */
+  footer {
+    border-top: 1px solid var(--edge-lo);
+    padding: 34px 28px 46px;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+  }
+  footer .stack { margin-top: 10px; color: var(--ink-dim); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  @media (max-width: 600px) {
+    .entry { grid-template-columns: 1fr; }
+    .entry .idx { display: none; }
+  }
+</style>
+
+<div class="hero brushed">
+  <div class="hero-inner">
+    <div class="kicker"><span class="led"></span>Engineering notes — solo build</div>
+    <h1>NLAB Environment</h1>
+    <p>
+      A personal training, finance, and creative-practice tracker, built solo
+      from a blank editor: vanilla JS, no framework, one Supabase backend,
+      two genuinely different interfaces sharing it — a sidebar-driven
+      desktop app and a gesture-driven mobile app. The four entries below
+      each tab are the parts that took real engineering, not the parts that
+      took a component library.
+    </p>
+    <div class="hero-stats">
+      <div class="hero-stat"><b>0</b>&nbsp;frameworks</div>
+      <div class="hero-stat"><b>2</b>&nbsp;interfaces, 1 codebase</div>
+      <div class="hero-stat"><b>1</b>&nbsp;backend (Postgres + Supabase)</div>
+      <div class="hero-stat"><b>100%</b>&nbsp;hand-built gesture layer</div>
+    </div>
+  </div>
+</div>
+
+<div class="switch-row">
+  <div class="switch">
+    <button class="active" data-plane="desktop">Desktop</button>
+    <button data-plane="mobile">Mobile</button>
+  </div>
+</div>
+
+<!-- ============ DESKTOP PLANE ============ -->
+<div class="plane active" id="plane-desktop">
+
+  <div class="entry">
+    <div class="idx">01</div>
+    <div>
+      <span class="role">Preference architecture</span>
+      <h3>One toggle list, three surfaces</h3>
+      <p>
+        Which apps show in the nav — and in what order — is a single JSON
+        column on the user's profile row. <b>The same reorder editor renders
+        inside desktop settings and the mobile drawer's settings sheet</b>,
+        and both write to the same preference, which also drives the Home
+        page's shortcut tiles. Change the order once, it's consistent
+        everywhere, immediately.
+      </p>
+      <div class="code">function resolvedNavApps() {
+  <span class="cm">// falls back to every module, in a fixed default order,</span>
+  <span class="cm">// until the user has actually saved a preference</span>
+  <span class="kw">if</span> (!navAppsPref) <span class="kw">return</span> APP_MODULES.map(m => ({ ...m }));
+  <span class="kw">return</span> navAppsPref
+    .filter(p => p.visible)
+    .map(p => APP_MODULES.find(m => m.app === p.app))
+    .filter(Boolean);
+}</div>
+    </div>
+  </div>
+
+  <div class="entry">
+    <div class="idx">02</div>
+    <div>
+      <span class="role">UI runtime</span>
+      <h3>A modal system that <i>awaits</i></h3>
+      <p>
+        <code>window.confirm</code> blocks the thread and looks like the
+        operating system, not the app. <b>uiConfirm / uiAlert / uiPrompt</b>
+        are promise-based drop-in replacements — themed, non-blocking, and
+        used the same way a native dialog would be, just awaited instead of
+        returned synchronously. Try the real thing below.
+      </p>
+      <div class="demo">
+        <div class="demo-label">Live — this calls the actual uiConfirm() pattern</div>
+        <button class="try-btn" id="try-modal">Delete this row…</button>
+        <div class="try-result" id="modal-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="entry">
+    <div class="idx">03</div>
+    <div>
+      <span class="role">Data integrity</span>
+      <h3>A "best" that can't lie</h3>
+      <p>
+        Logging a max-effort attempt doesn't make it a personal record —
+        <b>only a confirmed success does</b>. The weight is withheld from
+        every "best" calculation (the continuity card, the session
+        comparison, the dashboard's PR feed) until the lift is marked
+        successful; a failed or still-unconfirmed attempt is recorded — and
+        visibly tagged — without ever being able to inflate the number that
+        everything else is measured against.
+      </p>
+      <div class="code">.or(<span class="st">"is_pr_attempt.eq.false,pr_result.eq.success"</span>)
+<span class="cm">// excludes: failed attempts, and attempts still awaiting confirmation</span></div>
+    </div>
+  </div>
+
+  <div class="entry">
+    <div class="idx">04</div>
+    <div>
+      <span class="role">Component from scratch</span>
+      <h3>A &lt;select&gt; that doesn't clip</h3>
+      <p>
+        The native dropdown looks like every browser's default and clips
+        long option text. <b>The custom select renders its own popover</b>
+        against a hidden native <code>&lt;select&gt;</code>, so keyboard and
+        form-submission behavior stay standard while the visible chrome is
+        fully the app's own — no accessibility trade-off for the redesign.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ MOBILE PLANE ============ -->
+<div class="plane" id="plane-mobile">
+
+  <div class="entry">
+    <div class="idx">01</div>
+    <div>
+      <span class="role">Gesture coordination</span>
+      <h3>Touches don't fight each other</h3>
+      <p>
+        A phone screen has one touch surface and three gestures that all
+        want it: the edge-swipe drawer, swipe-to-reveal-actions on a row,
+        and drag-to-reorder. <b>An "owns-gesture" marker lets a row opt its
+        own touch stream out of the drawer's listener</b> before the two
+        ever collide — no gesture silently overrides another. Try both,
+        live, below: drag the handle to reorder, swipe a row left to reveal
+        delete.
+      </p>
+      <div class="demo">
+        <div class="demo-label">Live — pointer events, not a video</div>
+        <div class="gdemo">
+          <div class="gphone">
+            <div class="gscreen" id="gesture-list"></div>
+          </div>
+          <div class="gdemo-note">
+            <b>Drag handle</b> — reorders with a FLIP animation (the moved
+            rows animate to their new slot instead of jump-cutting).<br/><br/>
+            <b>Swipe row left</b> — reveals Delete without starting the
+            drawer's own edge-swipe underneath it.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="entry">
+    <div class="idx">02</div>
+    <div>
+      <span class="role">Resilience</span>
+      <h3>An outage doesn't erase your data</h3>
+      <p>
+        A failed write used to mean the entry was just gone. <b>Every
+        logging path now generates its own row ID client-side before the
+        network call</b>, so a connectivity failure queues the write
+        locally (localStorage) instead of losing it — the UI proceeds
+        optimistically, a small badge shows what's still syncing, and the
+        client-generated ID makes the eventual retry an idempotent
+        <code>upsert</code>, not a risky duplicate insert.
+      </p>
+      <div class="code"><span class="kw">const</span> localId = crypto.randomUUID();
+<span class="cm">// insert now proceeds locally even if this call ends up queued —</span>
+<span class="cm">// the retry later replays onto the same row, safely, via upsert</span>
+writeWithQueue(<span class="st">"workout_sets"</span>, <span class="st">"upsert"</span>, { id: localId, ... });</div>
+    </div>
+  </div>
+
+  <div class="entry">
+    <div class="idx">03</div>
+    <div>
+      <span class="role">Motion</span>
+      <h3>FLIP, not a jump-cut</h3>
+      <p>
+        Reordering a list by dragging is easy to get janky: measure the
+        <b>F</b>irst position, <b>L</b>ast position, <b>I</b>nvert the
+        difference with a transform, then let it <b>P</b>lay to zero — the
+        displaced rows glide into their new slots instead of teleporting,
+        and the real DOM reorder only happens once, on drop.
+      </p>
+    </div>
+  </div>
+
+  <div class="entry">
+    <div class="idx">04</div>
+    <div>
+      <span class="role">Input disambiguation</span>
+      <h3>A tap isn't a scroll, until it moves</h3>
+      <p>
+        Binding a pressed-state animation to <code>touchstart</code> means
+        every button your thumb glides over mid-scroll flashes as if it
+        were tapped. <b>Movement direction decides which gesture wins</b> —
+        vertical drift clears the pressed state (it was a scroll), while
+        horizontal drift is left alone, because that's a swipe gesture's
+        job to interpret, not this one's.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <div>A standalone showcase — not wired to the live app or its data.</div>
+  <div class="stack">Vanilla JS · Supabase (Postgres + Auth) · Pointer Events API · no build step</div>
+</footer>
+
+<script>
+  document.querySelectorAll(".switch button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".switch button").forEach((b) => b.classList.toggle("active", b === btn));
+      const target = btn.dataset.plane;
+      document.getElementById("plane-desktop").classList.toggle("active", target === "desktop");
+      document.getElementById("plane-mobile").classList.toggle("active", target === "mobile");
+    });
+  });
+
+  /* ---- live modal demo (recreates uiConfirm) ---- */
+  function showDemoConfirm(title, body) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.className = "modal-overlay";
+      overlay.innerHTML = `
+        <div class="modal-box">
+          <div class="m-title">${title}</div>
+          <div class="m-body">${body}</div>
+          <div class="modal-actions">
+            <button class="ghost" data-v="false">Cancel</button>
+            <button class="go" data-v="true">Delete</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) { overlay.remove(); resolve(false); return; }
+        const btn = e.target.closest("button[data-v]");
+        if (btn) { overlay.remove(); resolve(btn.dataset.v === "true"); }
+      });
+    });
+  }
+  document.getElementById("try-modal").addEventListener("click", async () => {
+    const result = document.getElementById("modal-result");
+    const ok = await showDemoConfirm("Delete set?", "This removes it from the session — there's no undo.");
+    result.textContent = ok ? "→ resolved true — row deleted" : "→ resolved false — cancelled";
+  });
+
+  /* ---- live gesture demo: drag-to-reorder (FLIP) + swipe-to-delete ---- */
+  (function () {
+    const items = [
+      { id: 1, label: "Bench Press · 8×20kg", swipe: true },
+      { id: 2, label: "Squat Rack · 6×60kg", swipe: false },
+      { id: 3, label: "Lat Pulldown · 10×40kg", swipe: false },
+    ];
+    const list = document.getElementById("gesture-list");
+
+    function render() {
+      list.innerHTML = items.map((it) => `
+        <div class="grow-wrap" data-id="${it.id}">
+          ${it.swipe ? '<div class="grow-delete">DELETE</div>' : ""}
+          <div class="grow" data-id="${it.id}">
+            <span class="handle">&#9776;</span><span>${it.label}</span>
+          </div>
+        </div>`).join("");
+      wireDrag();
+      wireSwipe();
+    }
+
+    function wireDrag() {
+      list.querySelectorAll(".handle").forEach((handle) => {
+        handle.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          const wrap = handle.closest(".grow-wrap");
+          const row = handle.closest(".grow");
+          const wraps = Array.from(list.querySelectorAll(".grow-wrap"));
+          const startIndex = wraps.indexOf(wrap);
+          const rowHeight = wrap.getBoundingClientRect().height + 6; // + the row-gap margin
+          const startY = e.clientY;
+          let currentIndex = startIndex;
+          row.classList.add("dragging");
+          wrap.style.zIndex = 5;
+          try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+
+          // FLIP preview only — no DOM rebuild mid-drag, so the dragged
+          // element never goes stale. The real reorder + render() happens
+          // once, on drop.
+          function move(ev) {
+            const dy = ev.clientY - startY;
+            wrap.style.transform = `translateY(${dy}px)`;
+            const shift = Math.round(dy / rowHeight);
+            currentIndex = Math.max(0, Math.min(wraps.length - 1, startIndex + shift));
+            wraps.forEach((w, i) => {
+              if (w === wrap) return;
+              const shouldShift = currentIndex > startIndex ? i > startIndex && i <= currentIndex : i >= currentIndex && i < startIndex;
+              w.style.transition = "transform 0.15s ease";
+              w.style.transform = shouldShift ? `translateY(${currentIndex > startIndex ? -rowHeight : rowHeight}px)` : "";
+            });
+          }
+          function up() {
+            document.removeEventListener("pointermove", move);
+            document.removeEventListener("pointerup", up);
+            if (currentIndex !== startIndex) {
+              const [moved] = items.splice(startIndex, 1);
+              items.splice(currentIndex, 0, moved);
+            }
+            render();
+          }
+          document.addEventListener("pointermove", move);
+          document.addEventListener("pointerup", up);
+        });
+      });
+    }
+
+    function wireSwipe() {
+      list.querySelectorAll(".grow-wrap").forEach((wrap) => {
+        const id = parseInt(wrap.dataset.id, 10);
+        const item = items.find((it) => it.id === id);
+        if (!item || !item.swipe) return;
+        const row = wrap.querySelector(".grow");
+        let startX = 0, startY = 0, dragging = false, open = false;
+        row.addEventListener("pointerdown", (e) => {
+          if (e.target.closest(".handle")) return;
+          startX = e.clientX; startY = e.clientY; dragging = true;
+          row.style.transition = "none";
+          try { row.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+        row.addEventListener("pointermove", (e) => {
+          if (!dragging) return;
+          // A vertical-dominant move is a scroll attempt, not a swipe —
+          // let go instead of dragging the row along with it.
+          if (Math.abs(e.clientY - startY) > 24 && Math.abs(e.clientY - startY) > Math.abs(e.clientX - startX)) {
+            dragging = false;
+            row.style.transition = "transform 0.18s ease";
+            row.style.transform = open ? "translateX(-56px)" : "translateX(0)";
+            return;
+          }
+          const dx = e.clientX - startX;
+          const base = open ? -56 : 0;
+          row.style.transform = `translateX(${Math.max(-56, Math.min(0, base + dx))}px)`;
+        });
+        const release = (e) => {
+          if (!dragging) return;
+          dragging = false;
+          const dx = e.clientX - startX;
+          open = open ? dx < 28 : dx < -28;
+          row.style.transition = "transform 0.18s ease";
+          row.style.transform = open ? "translateX(-56px)" : "translateX(0)";
+        };
+        row.addEventListener("pointerup", release);
+        row.addEventListener("pointercancel", release);
+      });
+    }
+
+    render();
+  })();
+</script>

@@ -34,7 +34,19 @@
   height: 100dvh; /* iOS Safari: accounts for the address bar collapsing */
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background-color: var(--bg);
+  /* Brushed-metal texture, same as the desktop body — #mobile-app is a
+     full-height solid layer over the body, so without this the body's own
+     texture never shows through on mobile. */
+  background-image: repeating-linear-gradient(
+    115deg,
+    var(--edge-hi) 0px,
+    transparent 1px,
+    transparent 3px,
+    var(--edge-lo) 4px,
+    transparent 5px,
+    transparent 11px
+  );
   /* pan-y (not `manipulation`, which implicitly still allows pan-x) — every
      horizontal gesture in this app (swipe-to-delete, the drawer drag) is
      already fully JS-driven, so the browser's own horizontal pan/scroll
@@ -70,7 +82,7 @@
   flex-shrink: 0;
   width: 30px;
   height: 30px;
-  border-radius: 8px;
+  border-radius: 5px;
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -265,7 +277,7 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 8px 14px;
   font-size: 12px;
   font-weight: 700;
@@ -281,7 +293,7 @@
 
 .m-delete-session-btn {
   color: var(--danger);
-  border-color: rgba(248, 113, 113, 0.35);
+  border-color: rgba(217, 140, 148, 0.35);
 }
 
 .m-delete-session-btn:active {
@@ -303,7 +315,7 @@
 .m-journal-nav-btn {
   height: 34px;
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: 5px;
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -366,23 +378,23 @@
 .m-start-btn {
   width: 100%;
   max-width: 280px;
-  background: linear-gradient(135deg, var(--accent), #574fd6);
+  background: linear-gradient(135deg, var(--accent), #7a63c2);
   color: #fff;
   border: none;
-  border-radius: 14px;
+  border-radius: 6px;
   padding: 18px;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   font-family: var(--font-display);
-  box-shadow: 0 5px 0 #4b45b0, 0 5px 18px var(--accent-glow);
+  box-shadow: 0 5px 0 #5f4a94, 0 5px 18px var(--accent-glow);
   transition: box-shadow 0.1s ease, transform 0.1s ease;
 }
 
 .m-start-btn:active {
   transform: translateY(3px);
-  box-shadow: 0 2px 0 #4b45b0;
+  box-shadow: 0 2px 0 #5f4a94;
 }
 
 .m-routine-picker {
@@ -392,7 +404,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 12px;
   font-size: 14px;
   appearance: none;
@@ -412,6 +424,11 @@
   padding-bottom: 4px;
   margin-bottom: 14px;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.m-station-row::-webkit-scrollbar {
+  display: none;
 }
 
 .m-station-chip {
@@ -443,7 +460,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--gold);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 12px 14px;
   margin-bottom: 14px;
 }
@@ -502,7 +519,7 @@
 .m-log-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 6px;
   padding: 20px;
   margin-bottom: 16px;
 }
@@ -632,7 +649,7 @@
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 10px;
   font-size: 12px;
   font-weight: 700;
@@ -648,23 +665,23 @@
 
 .m-log-btn {
   width: 100%;
-  background: linear-gradient(135deg, var(--accent), #574fd6);
+  background: linear-gradient(135deg, var(--accent), #7a63c2);
   color: #fff;
   border: none;
-  border-radius: 14px;
+  border-radius: 6px;
   padding: 18px;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   font-family: var(--font-display);
-  box-shadow: 0 5px 0 #4b45b0, 0 5px 18px var(--accent-glow);
+  box-shadow: 0 5px 0 #5f4a94, 0 5px 18px var(--accent-glow);
   transition: box-shadow 0.1s ease, transform 0.1s ease;
 }
 
 .m-log-btn:active {
   transform: translateY(3px);
-  box-shadow: 0 2px 0 #4b45b0;
+  box-shadow: 0 2px 0 #5f4a94;
 }
 
 /* ============================================
@@ -673,7 +690,7 @@
 .m-pr-tag-prompt {
   background: var(--gold-dim);
   border: 1px solid var(--gold);
-  border-radius: 12px;
+  border-radius: 5px;
   padding: 14px;
   margin-bottom: 16px;
   text-align: center;
@@ -694,7 +711,7 @@
 .m-pr-result-btn {
   flex: 1;
   border: none;
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 12px;
   font-size: 13px;
   font-weight: 700;
@@ -725,12 +742,12 @@
 }
 
 .m-pr-tag.success {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(127, 199, 168, 0.15);
   color: var(--success);
 }
 
 .m-pr-tag.failure {
-  background: rgba(248, 113, 113, 0.15);
+  background: rgba(217, 140, 148, 0.15);
   color: var(--danger);
 }
 
@@ -761,7 +778,7 @@
   justify-content: space-between;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 12px 14px;
   margin-bottom: 8px;
 }
@@ -819,7 +836,7 @@
 .m-dash-recent-row {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 12px 14px;
   margin-bottom: 8px;
 }
@@ -843,7 +860,7 @@
 .m-guitar-icon-btn {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text-faint);
   font-size: 15px;
   line-height: 1;
@@ -854,14 +871,14 @@
 
 .m-guitar-icon-btn.liked-active {
   color: var(--danger);
-  border-color: rgba(248, 113, 113, 0.4);
-  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(217, 140, 148, 0.4);
+  background: rgba(217, 140, 148, 0.1);
 }
 
 .m-guitar-icon-btn.want-active {
   color: var(--gold);
-  border-color: rgba(245, 197, 66, 0.4);
-  background: rgba(245, 197, 66, 0.1);
+  border-color: rgba(240, 201, 160, 0.4);
+  background: rgba(240, 201, 160, 0.1);
 }
 
 .m-guitar-icon-btn.setlist-active {
@@ -874,7 +891,7 @@
 .m-guitar-swipe-wrap {
   position: relative;
   margin-bottom: 8px;
-  border-radius: 10px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
@@ -886,7 +903,7 @@
   justify-content: space-between;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 12px 14px;
   touch-action: pan-y;
 }
@@ -1018,13 +1035,13 @@
   top: calc(env(safe-area-inset-top, 0px) + 70px);
   left: 50%;
   transform: translate(-50%, -20px);
-  background: linear-gradient(135deg, var(--gold), #d99e1f);
+  background: linear-gradient(135deg, var(--gold), #c98f52);
   color: #1a1400;
   font-weight: 700;
   font-size: 14px;
   padding: 12px 20px;
   border-radius: 999px;
-  box-shadow: 0 6px 24px rgba(245, 197, 66, 0.5);
+  box-shadow: 0 6px 24px rgba(240, 201, 160, 0.5);
   z-index: 400;
   opacity: 0;
   transition: opacity 0.25s ease, transform 0.25s ease;
@@ -1042,7 +1059,7 @@
 .m-journal-swipe-wrap {
   position: relative;
   margin-bottom: 14px;
-  border-radius: 14px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -1065,7 +1082,7 @@
 .m-swipe-action-delete {
   left: 0;
   background: var(--danger);
-  border-radius: 14px 0 0 14px;
+  border-radius: 6px 0 0 14px;
 }
 
 /* Guitar/Movies rows only have Delete (no Edit-via-swipe like Journal
@@ -1093,7 +1110,7 @@
   z-index: 1;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 6px;
   padding: 16px;
   touch-action: pan-y;
   cursor: pointer;
@@ -1188,7 +1205,7 @@
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   color: var(--gold);
   padding: 14px;
   font-size: 26px;
@@ -1214,7 +1231,7 @@
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   color: var(--text);
   padding: 12px;
   font-size: 14px;
@@ -1229,7 +1246,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 12px 14px;
   margin-bottom: 8px;
 }
@@ -1285,7 +1302,7 @@
 .m-payment-action-btn {
   flex: 1;
   padding: 9px 0;
-  border-radius: 8px;
+  border-radius: 5px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text-muted);
@@ -1300,37 +1317,37 @@
 }
 
 .m-payment-action-btn.paid {
-  background: rgba(74, 222, 128, 0.1);
-  border-color: rgba(74, 222, 128, 0.35);
+  background: rgba(127, 199, 168, 0.1);
+  border-color: rgba(127, 199, 168, 0.35);
   color: var(--success);
 }
 
 .m-payment-action-btn.paid:active {
-  background: rgba(74, 222, 128, 0.2);
+  background: rgba(127, 199, 168, 0.2);
   border-color: var(--success);
 }
 
 .m-payment-action-btn.overdue {
-  background: rgba(248, 113, 113, 0.1);
-  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(217, 140, 148, 0.1);
+  border-color: rgba(217, 140, 148, 0.35);
   color: var(--danger);
 }
 
 .m-payment-action-btn.overdue:active {
-  background: rgba(248, 113, 113, 0.2);
+  background: rgba(217, 140, 148, 0.2);
   border-color: var(--danger);
 }
 
 .m-payment-action-btn.skip {
   /* Neutral gray — used for both "Cancel" and "Adjust Balance", neither of
      which is a warning; yellow here clashed with the gold amount above it. */
-  background: rgba(139, 139, 158, 0.1);
+  background: rgba(153, 146, 179, 0.1);
   border-color: var(--border);
   color: var(--text-muted);
 }
 
 .m-payment-action-btn.skip:active {
-  background: rgba(139, 139, 158, 0.2);
+  background: rgba(153, 146, 179, 0.2);
   border-color: var(--text-muted);
 }
 
@@ -1347,7 +1364,7 @@
 .m-dash-stat-tile {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 5px;
   padding: 14px;
 }
 
@@ -1372,11 +1389,11 @@
 
 .m-balance-tile {
   cursor: pointer;
-  border-color: rgba(245, 197, 66, 0.3);
+  border-color: rgba(240, 201, 160, 0.3);
 }
 
 .m-balance-tile:active {
-  background: rgba(245, 197, 66, 0.08);
+  background: rgba(240, 201, 160, 0.08);
 }
 
 .m-balance-tile .value {
@@ -1394,7 +1411,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 14px;
   text-align: left;
   font-size: 13px;
@@ -1409,7 +1426,7 @@
 .m-dash-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 5px;
   padding: 14px;
   margin-bottom: 16px;
 }
@@ -1537,7 +1554,7 @@
   margin: auto 20px 0;
   background: none;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   color: var(--text-faint);
   font-size: 12px;
   padding: 8px 10px;
@@ -1604,7 +1621,7 @@
 .m-sheet {
   background: var(--surface-raised);
   border-top: 1px solid var(--border);
-  border-radius: 20px 20px 0 0;
+  border-radius: 6px 20px 0 0;
   width: 100%;
   max-height: 82vh;
   display: flex;
@@ -1673,7 +1690,7 @@
 .m-stat-block {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 6px;
   padding: 18px;
   margin-bottom: 14px;
 }
